@@ -1,0 +1,7 @@
+{
+  "name": "LinguaMaster AI",
+  "description": "Gerçek zamanlı, hibrit (ses+metin) etkileşimli, ileri seviye yapay zeka dil öğretmeni.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
