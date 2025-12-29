@@ -1,5 +1,5 @@
 import { GoogleGenAI, Modality, Content } from "@google/genai";
-import { AppSettings, LessonMode } from "../types";
+import { AppSettings, LessonMode, PracticeResult } from "../types";
 import { SYSTEM_DEFINITION } from "../constants";
 import { decodeBase64, decodeAudioData } from "../utils/audioUtils";
 
@@ -147,6 +147,130 @@ export const regenerateExampleAnswers = async (
     } catch (error) {
         console.error("Regenerate examples error:", error);
         return "";
+    }
+};
+
+// --- NEW: Categorize Words Batch ---
+export const categorizeWordsBatch = async (
+    words: string[],
+    targetLanguage: string
+): Promise<Record<string, string>> => {
+    try {
+        // Gemini likes reasonable context sizes. 
+        // We will send a prompt to categorize the list.
+        // If the list is too long, the caller should chunk it, but for simplicity here we assume < 100 words per call or handle it here.
+        
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `
+            TASK: Assign a single, general thematic category to each word in the list below.
+            LANGUAGE: ${targetLanguage}
+            
+            SUGGESTED CATEGORIES (Use these if applicable, or similar simple ones):
+            [Business, Academic, Travel, Daily Life, Emotions, Technology, Health, Politics, Nature, Social, Food, Arts, Abstract]
+            
+            INPUT WORDS:
+            ${JSON.stringify(words)}
+            
+            OUTPUT FORMAT:
+            Return ONLY a JSON object mapping the word to its category.
+            Example: { "apple": "Food", "run": "Action", "policy": "Politics" }
+            `,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const jsonStr = response.text || "{}";
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
+    } catch (error) {
+        console.error("Batch categorization error", error);
+        return {};
+    }
+};
+
+// --- NEW: Get Word Details (Translation + Definition) ---
+export const getWordDetails = async (
+    word: string,
+    targetLanguage: string
+): Promise<{ translation: string, definition: string }> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `
+            Word: "${word}"
+            Language: ${targetLanguage}
+            
+            Task: Provide the direct translation of this word in Turkish and a short, simple definition in ${targetLanguage}.
+            
+            Return JSON ONLY:
+            {
+                "translation": "Turkish translation",
+                "definition": "Simple definition in target language"
+            }
+            `,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const jsonStr = response.text || "{}";
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
+    } catch (error) {
+        console.error("Word details error", error);
+        return { translation: "...", definition: "..." };
+    }
+};
+
+// --- NEW FUNCTION: Evaluate Vocabulary Practice ---
+export const evaluateVocabularyPractice = async (
+    targetWord: string,
+    userSentence: string,
+    targetLanguage: string
+): Promise<PracticeResult> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `
+            Role: Language Teacher.
+            Task: Evaluate the student's sentence based on the required TARGET WORD.
+            Target Language: ${targetLanguage}
+            
+            Target Word: "${targetWord}"
+            Student Sentence: "${userSentence}"
+            
+            Analyze:
+            1. Did the student use the target word (or a valid form of it)?
+            2. Is the grammar correct?
+            3. Does the sentence make logical sense?
+            
+            Return ONLY a JSON object:
+            {
+                "isCorrect": boolean, (true if word used AND grammar is mostly correct)
+                "score": number, (0-100 based on quality)
+                "feedback": "Turkish explanation of mistakes or praise.",
+                "betterSentence": "Optional better version of the sentence in target language"
+            }
+            `,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const jsonStr = response.text || "{}";
+        // Clean markdown code blocks if present
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
+
+    } catch (error) {
+        console.error("Practice evaluation failed", error);
+        return {
+            isCorrect: false,
+            score: 0,
+            feedback: "Değerlendirme yapılamadı. Bağlantınızı kontrol edin."
+        };
     }
 };
 

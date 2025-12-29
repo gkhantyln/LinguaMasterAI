@@ -36,6 +36,15 @@ export enum ProficiencyLevel {
   Advanced = 'C1-C2 (Advanced)'
 }
 
+export const CEFR_MAP: Record<string, string> = {
+    'A1': 'Başlangıç',
+    'A2': 'Temel',
+    'B1': 'Orta',
+    'B2': 'İyi Orta',
+    'C1': 'İleri',
+    'C2': 'Uzman'
+};
+
 export enum TutorPersona {
   StrictProfessor = 'strict_professor',
   FriendlyLocal = 'friendly_local',
@@ -62,11 +71,28 @@ export interface VocabularyItem {
   timestamp: number;
 }
 
+export interface CustomWord {
+    id: string;
+    word: string;
+    level?: string; // A1, B2 vs.
+    category?: string; // Business, Travel, Food etc.
+    source?: string; // Oxford 3000, User List vs.
+}
+
+export interface PracticeResult {
+    isCorrect: boolean;
+    feedback: string;
+    betterSentence?: string;
+    score: number; // 0-100
+}
+
 export interface UserStats {
   totalMessages: number;
   totalErrorsFixed: number;
   vocabularyCount: number;
   sessionsCompleted: number;
+  practiceScoreTotal: number;
+  wordsPracticed: number;
 }
 
 export interface AppSettings {
@@ -112,5 +138,7 @@ export const DEFAULT_STATS: UserStats = {
   totalMessages: 0,
   totalErrorsFixed: 0,
   vocabularyCount: 0,
-  sessionsCompleted: 0
+  sessionsCompleted: 0,
+  practiceScoreTotal: 0,
+  wordsPracticed: 0
 };

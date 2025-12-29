@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS } from './types';
+import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS, CustomWord } from './types';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ChatMessage } from './components/ChatMessage';
 import { InputArea } from './components/InputArea';
 import { LiveSession } from './components/LiveSession';
 import { DashboardModal } from './components/DashboardModal';
+import { PracticeModal } from './components/PracticeModal';
 import { sendMessageToGemini, generateSpeechFromText } from './services/geminiService';
 import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail } from 'lucide-react';
 
@@ -20,6 +21,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [customWords, setCustomWords] = useState<CustomWord[]>(() => {
+    const saved = localStorage.getItem('lingua_custom_words');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [stats, setStats] = useState<UserStats>(() => {
     const saved = localStorage.getItem('lingua_stats');
     return saved ? JSON.parse(saved) : DEFAULT_STATS;
@@ -27,9 +33,14 @@ const App: React.FC = () => {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Modal States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isLiveSessionOpen, setIsLiveSessionOpen] = useState(false);
+  const [isPracticeOpen, setIsPracticeOpen] = useState(false);
+  const [practiceWords, setPracticeWords] = useState<CustomWord[]>([]);
+
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -42,6 +53,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('lingua_vocab', JSON.stringify(vocabulary));
   }, [vocabulary]);
+
+  useEffect(() => {
+    localStorage.setItem('lingua_custom_words', JSON.stringify(customWords));
+  }, [customWords]);
 
   useEffect(() => {
     localStorage.setItem('lingua_stats', JSON.stringify(stats));
@@ -85,6 +100,33 @@ const App: React.FC = () => {
   const handleDeleteVocabulary = (id: string) => {
       setVocabulary(prev => prev.filter(item => item.id !== id));
       setStats(prev => ({ ...prev, vocabularyCount: Math.max(0, prev.vocabularyCount - 1) }));
+  };
+
+  // --- Practice Logic ---
+  const handleUploadWords = (newWords: CustomWord[]) => {
+      setCustomWords(prev => [...prev, ...newWords]);
+  };
+
+  // Yeni fonksiyon: Tüm listeyi güncellemek için (Kategorizasyon sonrası)
+  const handleUpdateWordList = (updatedWords: CustomWord[]) => {
+      setCustomWords(updatedWords);
+  };
+
+  const startPractice = (words: CustomWord[]) => {
+      // Şimdilik hepsini gönderiyoruz, istenirse seviye filtresi eklenebilir.
+      // Karıştır (Shuffle)
+      const shuffled = [...words].sort(() => 0.5 - Math.random());
+      setPracticeWords(shuffled.slice(0, 10)); // Her seferinde 10 kelime
+      setIsDashboardOpen(false);
+      setIsPracticeOpen(true);
+  };
+
+  const handlePracticeComplete = (avgScore: number, wordsCount: number) => {
+      setStats(prev => ({
+          ...prev,
+          practiceScoreTotal: prev.practiceScoreTotal + avgScore,
+          wordsPracticed: prev.wordsPracticed + wordsCount
+      }));
   };
 
   const processResponse = async (input: string | { audioBase64: string, mimeType: string }) => {
@@ -299,7 +341,11 @@ const App: React.FC = () => {
          onClose={() => setIsDashboardOpen(false)}
          stats={stats}
          vocabulary={vocabulary}
+         customWords={customWords}
          onDeleteVocab={handleDeleteVocabulary}
+         onUploadWords={handleUploadWords}
+         onUpdateWordList={handleUpdateWordList}
+         onStartPractice={startPractice}
       />
 
       {isLiveSessionOpen && (
@@ -309,6 +355,17 @@ const App: React.FC = () => {
                 setIsLiveSessionOpen(false);
                 setStats(prev => ({...prev, sessionsCompleted: prev.sessionsCompleted + 1}));
             }}
+          />
+      )}
+
+      {isPracticeOpen && (
+          <PracticeModal 
+            isOpen={isPracticeOpen}
+            onClose={() => setIsPracticeOpen(false)}
+            words={practiceWords}
+            settings={settings}
+            audioContext={audioContext}
+            onComplete={handlePracticeComplete}
           />
       )}
     </div>
