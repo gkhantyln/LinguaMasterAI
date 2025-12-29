@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { AppSettings, Message } from '../types';
-import { Play, Pause, AlertCircle, Bot, User, TextSelect, Loader2, Eye, EyeOff, Lightbulb, LightbulbOff, BookmarkPlus, Check } from 'lucide-react';
-import { generateSpeechFromText } from '../services/geminiService';
+import { Play, Pause, AlertCircle, Bot, User, TextSelect, Loader2, Eye, EyeOff, Lightbulb, LightbulbOff, BookmarkPlus, Check, Hammer, Book, MessageSquareQuote, Flame, RefreshCw } from 'lucide-react';
+import { generateSpeechFromText, regenerateExampleAnswers } from '../services/geminiService';
 import { audioBufferToWavBlob } from '../utils/audioUtils';
 
 interface ChatMessageProps {
@@ -11,6 +11,152 @@ interface ChatMessageProps {
   settings: AppSettings;
   onSaveVocabulary?: (word: string, context: string) => void;
 }
+
+// --- HINTS PARSER COMPONENT ---
+interface HintsDisplayProps {
+    initialHintsText: string;
+    tutorQuestion: string;
+    settings: AppSettings;
+}
+
+const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQuestion, settings }) => {
+    const [currentHintsText, setCurrentHintsText] = useState(initialHintsText);
+    const [isRegenerating, setIsRegenerating] = useState(false);
+
+    const handleRegenerate = async () => {
+        setIsRegenerating(true);
+        try {
+            const newExamples = await regenerateExampleAnswers(tutorQuestion, settings);
+            if (newExamples) {
+                // Mevcut metindeki Examples kısmını bul ve değiştir
+                // Eğer mevcut metinde Structure veya Vocabulary varsa onları koru, sadece Examples kısmını değiştir.
+                
+                // 1. Structure ve Vocab'i ayıkla
+                const structureMatch = currentHintsText.match(/\*\*Structure:\*\*(.*?)(?=\*\*Vocabulary:|\*\*Examples:|\*\*Example:|$)/s);
+                const vocabMatch = currentHintsText.match(/\*\*Vocabulary:\*\*(.*?)(?=\*\*Examples:|\*\*Example:|$)/s);
+                
+                let newFullText = "";
+                
+                if (structureMatch) newFullText += `**Structure:**${structureMatch[1]}\n\n`;
+                if (vocabMatch) newFullText += `**Vocabulary:**${vocabMatch[1]}\n\n`;
+                
+                // Yeni gelen Examples text'i zaten başlıklı geliyor "**Examples:**..."
+                newFullText += newExamples;
+                
+                setCurrentHintsText(newFullText);
+            }
+        } catch (error) {
+            console.error("Regeneration failed", error);
+        } finally {
+            setIsRegenerating(false);
+        }
+    };
+
+    // Regex ile bölümleri ayır (Structure, Vocabulary, Examples)
+    const structureMatch = currentHintsText.match(/\*\*Structure:\*\*(.*?)(?=\*\*Vocabulary:|\*\*Examples:|\*\*Example:|$)/s);
+    const vocabMatch = currentHintsText.match(/\*\*Vocabulary:\*\*(.*?)(?=\*\*Examples:|\*\*Example:|$)/s);
+    
+    // Examples veya Example yakala (Geriye dönük uyumluluk için)
+    const exampleMatch = currentHintsText.match(/\*\*Examples?:\*\*(.*?)(?=$)/s);
+
+    const structure = structureMatch ? structureMatch[1].trim() : null;
+    const vocab = vocabMatch ? vocabMatch[1].trim() : null;
+    const rawExamples = exampleMatch ? exampleMatch[1].trim() : null;
+
+    // Eğer format uymuyorsa standart markdown göster (Fallback)
+    if (!structure && !vocab && !rawExamples) {
+        return (
+             <div className="bg-amber-950/30 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-200 animate-in fade-in slide-in-from-top-2 duration-300">
+                <ReactMarkdown>{currentHintsText}</ReactMarkdown>
+             </div>
+        );
+    }
+
+    // Örnekleri Satırlara Bölme
+    const examplesList = rawExamples 
+        ? rawExamples.split('\n').filter(line => line.trim().length > 0) 
+        : [];
+
+    return (
+        <div className="flex flex-col gap-2 w-full animate-in fade-in slide-in-from-top-2 duration-300">
+            
+            {/* 1. Structure Card */}
+            {structure && (
+                <div className="flex flex-col bg-blue-950/40 border-l-4 border-blue-500 rounded-r-lg p-3 shadow-sm">
+                    <div className="flex items-center gap-2 text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">
+                        <Hammer size={12} /> Cümle Yapısı
+                    </div>
+                    <div className="text-blue-100 text-sm font-medium font-mono">
+                        {structure}
+                    </div>
+                </div>
+            )}
+
+            {/* 2. Vocabulary Card */}
+            {vocab && (
+                <div className="flex flex-col bg-emerald-950/40 border-l-4 border-emerald-500 rounded-r-lg p-3 shadow-sm">
+                    <div className="flex items-center gap-2 text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">
+                        <Book size={12} /> Önerilen Kelimeler
+                    </div>
+                    <div className="text-emerald-100 text-sm leading-relaxed">
+                        {vocab}
+                    </div>
+                </div>
+            )}
+
+            {/* 3. Example Card (5 Variaties) */}
+            {(examplesList.length > 0 || isRegenerating) && (
+                <div className="flex flex-col bg-amber-950/40 border-l-4 border-amber-500 rounded-r-lg p-3 shadow-sm transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                            <MessageSquareQuote size={12} /> Örnek Cevaplar
+                        </div>
+                        <button 
+                            onClick={handleRegenerate}
+                            disabled={isRegenerating}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-900/30 hover:bg-amber-800/50 text-[10px] text-amber-200 hover:text-white transition-colors border border-amber-500/20 disabled:opacity-50"
+                            title="Tutor'un sorusuna uygun yeni cevaplar üret"
+                        >
+                            <RefreshCw size={10} className={isRegenerating ? "animate-spin" : ""} />
+                            {isRegenerating ? "Üretiliyor..." : "Yeni Cevaplar"}
+                        </button>
+                    </div>
+
+                    {isRegenerating ? (
+                        <div className="flex flex-col items-center justify-center py-6 gap-2 text-amber-500/50">
+                            <Loader2 size={20} className="animate-spin" />
+                            <span className="text-xs">Soruya uygun yeni yanıtlar hazırlanıyor...</span>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {examplesList.map((line, idx) => {
+                                // Satırı Temizleme (1., 2. vb sil)
+                                const cleanLine = line.replace(/^\d+\.\s*/, '');
+                                
+                                // Tipe göre stil (Slang, Positive, etc)
+                                const isSlang = cleanLine.toLowerCase().includes('(slang)') || cleanLine.toLowerCase().includes('sokak ağzı');
+                                const isPositive = cleanLine.toLowerCase().includes('(positive)');
+                                const isNegative = cleanLine.toLowerCase().includes('(negative)');
+                                
+                                return (
+                                    <div key={idx} className={`p-2 rounded border text-sm animate-in fade-in slide-in-from-left-2 duration-300 ${
+                                        isSlang 
+                                        ? 'bg-red-900/30 border-red-500/30 text-red-100 italic' 
+                                        : 'bg-amber-900/20 border-amber-500/20 text-amber-100'
+                                    }`} style={{ animationDelay: `${idx * 50}ms` }}>
+                                        {isSlang && <Flame size={12} className="inline mr-1 text-red-400" />}
+                                        {cleanLine}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext, settings, onSaveVocabulary }) => {
   const isUser = message.role === 'user';
@@ -207,16 +353,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
                   )}
 
                   {isHintsVisible && message.hints && (
-                      <div className="bg-amber-950/30 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-200 animate-in fade-in slide-in-from-top-2 duration-300">
-                          <div className="flex items-center gap-2 mb-1 text-amber-400 text-xs font-bold uppercase tracking-wider">
-                              <Lightbulb size={12} /> İpuçları
-                          </div>
-                          <ReactMarkdown 
-                            className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0"
-                           >
-                              {message.hints}
-                           </ReactMarkdown>
-                      </div>
+                      <HintsDisplay 
+                        initialHintsText={message.hints} 
+                        tutorQuestion={message.text}
+                        settings={settings}
+                      />
                   )}
 
               </div>

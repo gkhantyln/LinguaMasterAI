@@ -118,6 +118,38 @@ REMEMBER THE 3-PART FORMAT: Response ||| Translation ||| Hints
   }
 };
 
+export const regenerateExampleAnswers = async (
+    tutorQuestion: string,
+    settings: AppSettings
+): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `
+            CONTEXT: The language tutor asked the student: "${tutorQuestion}"
+            TARGET LANGUAGE: ${settings.targetLanguage}
+            USER LEVEL: ${settings.proficiencyLevel}
+
+            TASK: Provide 5 NEW and DIFFERENT example answers the student can use to reply to this specific question.
+            They must be directly relevant to the question asked.
+
+            STRICT OUTPUT FORMAT (Do not include Structure or Vocabulary, ONLY the Examples list):
+            **Examples:**
+            1. (Positive) [Sentence] ([TR Translation])
+            2. (Negative) [Sentence] ([TR Translation])
+            3. (Question) [Sentence] ([TR Translation])
+            4. (Formal) [Sentence] ([TR Translation])
+            5. (Slang) [Sentence] ([TR Translation])
+            `
+        });
+        
+        return response.text || "";
+    } catch (error) {
+        console.error("Regenerate examples error:", error);
+        return "";
+    }
+};
+
 export const generateSpeechFromText = async (
   text: string,
   settings: AppSettings,
@@ -220,13 +252,18 @@ export const getHintsForLive = async (
             model: "gemini-3-flash-preview",
             contents: `The tutor just said: "${originalText}" in ${targetLanguage}.
             
-            Provide 3 helpful hints for the student to reply.
-            Format:
-            1. [English Hint] (Türkçesi)
-            2. [English Hint] (Türkçesi)
-            3. [Vocabulary] (Kelime Anlamı)
+            Provide helpful hints for the student to reply.
+            YOU MUST USE THIS FORMAT EXACTLY:
             
-            Keep it short and encouraging.`
+            **Structure:** [Grammar Formula] ([TR Explanation])
+            **Vocabulary:** [Word] ([TR]), [Word] ([TR])
+            **Examples:**
+            1. (Positive) [Sentence] ([TR Translation])
+            2. (Negative) [Sentence] ([TR Translation])
+            3. (Question) [Sentence] ([TR Translation])
+            4. (Formal) [Sentence] ([TR Translation])
+            5. (Slang) [Sentence] ([TR Translation])
+            `
         });
         return response.text || "İpucu oluşturulamadı.";
     } catch (e) {

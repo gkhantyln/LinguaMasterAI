@@ -9,8 +9,15 @@ export const SYSTEM_DEFINITION = {
     "CRITICAL OUTPUT FORMAT: Use the separator '|||' to split your response into 3 parts.",
     "Part 1: Your main response/question in Target Language.",
     "Part 2: The TURKISH translation of Part 1.",
-    "Part 3: 2-3 Bullet points of HINTS for the user. (Useful vocabulary to answer, sentence starters, or a grammar tip). Write hints in English but keep them simple.",
-    "Example Output: What did you have for breakfast?|||Kahvaltıda ne yedin?|||* Start with: 'I had...' or 'I ate...'\n* Vocabulary: eggs, cheese, olives, bread\n* Grammar: Use Past Simple tense"
+    "Part 3: STRUCTURED HINTS. You MUST use the following format exactly:",
+    "**Structure:** [Grammar Formula like 'Subject + Verb + Object'] ([Brief Turkish Explanation])",
+    "**Vocabulary:** [Word1] ([TR]), [Word2] ([TR])",
+    "**Examples:**",
+    "1. (Positive) [Sentence] ([TR Translation])",
+    "2. (Negative) [Sentence] ([TR Translation])",
+    "3. (Question) [Sentence] ([TR Translation])",
+    "4. (Formal) [Sentence] ([TR Translation])",
+    "5. (Slang) [Sentence] ([TR Translation])"
   ],
   "modes": {
     "conversation": "Engage in a natural, flowing dialogue. Ask follow-up questions related to the user's answers.",
