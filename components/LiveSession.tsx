@@ -1,13 +1,16 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { AppSettings } from '../types';
-import { Mic, MicOff, Loader2, Globe, Eye, Lightbulb, X, Sparkles, Activity, Power, Ear, Move, ArrowRight } from 'lucide-react';
+import { AppSettings, SpeakingStyle } from '../types';
+import { Mic, MicOff, Loader2, Globe, Eye, Lightbulb, X, Sparkles, Activity, Power, Ear, Move, ArrowRight, Gamepad2, BookmarkPlus, Check } from 'lucide-react';
 import { decodeAudioData } from '../utils/audioUtils';
 import { getTextTranslationForLive, getHintsForLive } from '../services/geminiService';
 
 interface LiveSessionProps {
   settings: AppSettings;
   onClose: () => void;
+  onSaveVocabulary: (word: string, context: string) => void;
+  onOpenGameArena: () => void;
 }
 
 // --- CONTENT RENDERER FOR POPUPS ---
@@ -165,7 +168,7 @@ const TranscriptRenderer: React.FC<{ text: string }> = ({ text }) => {
     const parts = text.split(/(Did you mean:.*?\?|Correction:.*?\.)/gi);
 
     return (
-        <span className="text-xl md:text-2xl font-medium leading-relaxed drop-shadow-lg tracking-tight">
+        <span className="text-xl md:text-2xl font-medium leading-relaxed drop-shadow-lg tracking-tight cursor-text">
             {parts.map((part, index) => {
                 // CORRECTION BLOCK
                 if (part.match(/Did you mean:|Correction:/i)) {
@@ -202,7 +205,7 @@ const TranscriptRenderer: React.FC<{ text: string }> = ({ text }) => {
 };
 
 
-export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) => {
+export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose, onSaveVocabulary, onOpenGameArena }) => {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [isMicOn, setIsMicOn] = useState(true);
   
@@ -214,6 +217,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
   // Visibility Toggles
   const [showTranslation, setShowTranslation] = useState(false);
   const [showHints, setShowHints] = useState(false);
+
+  // Selection Saving State
+  const [selectedText, setSelectedText] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
   
   // Audio Refs
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -345,14 +352,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
       if (settings.tutorPersona === 'friendly_local') voiceName = 'Puck';
       if (settings.tutorPersona === 'encouraging_friend') voiceName = 'Kore';
 
+      // -- NEW: Dialect and Style Injection --
+      const dialectInstruction = settings.targetLanguage === 'English' 
+        ? `Use ${settings.englishDialect} spelling, vocabulary, and idioms.` 
+        : "";
+      
+      const styleInstruction = settings.speakingStyle === SpeakingStyle.StreetSlang
+        ? "USE STREET SLANG (modern idioms, contractions like gonna/wanna, casual tone)."
+        : settings.speakingStyle === SpeakingStyle.Formal
+        ? "USE FORMAL LANGUAGE (no contractions, polite honorifics)."
+        : "USE STANDARD LANGUAGE.";
+
       const correctionPrompt = `
       You are a live audio language tutor.
       Current Context: Target Language is ${settings.targetLanguage}, Level is ${settings.proficiencyLevel}.
+      Instructions: ${dialectInstruction} ${styleInstruction}
       
       CRITICAL RULE:
       If the user speaks and makes a grammatical error or incorrect vocabulary choice:
       1. IMMEDIATELY start your response by saying: "Did you mean: [Correct Sentence]?" 
-      2. Then briefly explain the correction in English (keep it very simple).
+      2. Then briefly explain the correction in ${settings.nativeLanguage} (keep it very simple).
       3. Then continue the conversation.
       
       If the user speaks correctly, just continue the conversation naturally.
@@ -489,6 +508,36 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
 
   const toggleMic = () => { setIsMicOn(!isMicOn); };
 
+  // --- SELECTION LOGIC ---
+  const handleTextMouseUp = () => {
+      const selection = window.getSelection();
+      if (selection && selection.toString().trim().length > 0) {
+          setSelectedText(selection.toString().trim());
+          setIsSaved(false);
+      }
+  };
+
+  const clearSelection = () => {
+      setSelectedText('');
+      window.getSelection()?.removeAllRanges();
+  };
+
+  const handleSaveVocab = () => {
+      if (selectedText && onSaveVocabulary) {
+          onSaveVocabulary(selectedText, latestTranscript); // Save with full transcript context
+          setIsSaved(true);
+          setTimeout(() => {
+              setIsSaved(false);
+              clearSelection();
+          }, 1500);
+      }
+  };
+
+  const handleOpenGame = () => {
+      onClose(); // Close Live Session first
+      onOpenGameArena(); // Open Game Arena
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-slate-950 overflow-hidden font-sans">
       
@@ -521,6 +570,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
             {/* Right: Controls & Info */}
             <div className="flex items-center gap-3">
                  
+                 {/* Game Button */}
+                 <button
+                    onClick={handleOpenGame}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all bg-indigo-600/80 hover:bg-indigo-500 text-white border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                    title="Oturumu kapat ve oyuna geç"
+                 >
+                    <Gamepad2 size={14} />
+                    <span className="hidden sm:inline">Oyun</span>
+                 </button>
+                 
+                 <div className="h-6 w-px bg-slate-800 mx-1"></div>
+
                  {/* Translation Button */}
                  <button
                     onClick={() => setShowTranslation(!showTranslation)}
@@ -551,7 +612,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
                     <span className="hidden sm:inline">İpucu</span>
                  </button>
 
-                 <div className="h-6 w-px bg-slate-800 mx-1"></div>
+                 <div className="h-6 w-px bg-slate-800 mx-1 hidden md:block"></div>
 
                  {/* Language Badge */}
                  <div className="hidden md:flex flex-col items-end">
@@ -574,8 +635,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
                 />
              </div>
 
-             {/* Transcript Display */}
-             <div className="relative z-10 text-center max-w-3xl px-4 w-full min-h-[100px]">
+             {/* Transcript Display Container */}
+             <div 
+                className="relative z-10 text-center max-w-3xl px-4 w-full min-h-[100px]"
+                onMouseUp={handleTextMouseUp} // ENABLE SELECTION
+             >
                 {latestTranscript ? (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <TranscriptRenderer text={latestTranscript} />
@@ -586,6 +650,38 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
                         <span className="text-xs font-mono text-slate-500 uppercase tracking-widest">Dinleniyor...</span>
                     </div>
                 )}
+                
+                {/* FLOATING SAVE TOOLBAR (Appears when text is selected) */}
+                {selectedText && (
+                    <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200 bg-slate-900 border border-emerald-500/30 rounded-full p-1.5 pr-4 shadow-2xl shadow-emerald-900/40 backdrop-blur-xl">
+                        <button
+                            onClick={clearSelection}
+                            className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                            title="İptal"
+                        >
+                            <X size={14} />
+                        </button>
+
+                        <div className="h-4 w-px bg-slate-700"></div>
+
+                        <span className="text-xs text-slate-300 max-w-[150px] truncate px-1 italic">
+                            "{selectedText}"
+                        </span>
+
+                        <button
+                            onClick={handleSaveVocab}
+                            disabled={isSaved}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-xs font-bold ${
+                                isSaved 
+                                ? 'bg-emerald-600 border-emerald-500 text-white' 
+                                : 'bg-emerald-900/40 border-emerald-500/50 text-emerald-400 hover:bg-emerald-900/60'
+                            }`}
+                        >
+                            {isSaved ? <Check size={12} /> : <BookmarkPlus size={12} />}
+                            {isSaved ? 'Kaydedildi' : 'Kaydet'}
+                        </button>
+                    </div>
+                )}
              </div>
 
              {/* DRAGGABLE WINDOWS - Fixed absolute to viewport to allow dragging anywhere */}
@@ -593,7 +689,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, onClose }) =
              {/* TRANSLATION WINDOW */}
              {showTranslation && translation && (
                 <DraggableWindow 
-                    title="Türkçe Çeviri" 
+                    title="Çeviri" 
                     icon={<Globe size={14}/>} 
                     content={translation} 
                     onClose={() => setShowTranslation(false)}

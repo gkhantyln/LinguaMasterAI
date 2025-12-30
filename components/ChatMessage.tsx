@@ -1,9 +1,10 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { AppSettings, Message } from '../types';
-import { Play, Pause, AlertCircle, Bot, User, TextSelect, Loader2, Eye, EyeOff, Lightbulb, LightbulbOff, BookmarkPlus, Check, Hammer, Book, MessageSquareQuote, Flame, RefreshCw } from 'lucide-react';
-import { generateSpeechFromText, regenerateExampleAnswers } from '../services/geminiService';
+import { Play, Pause, AlertCircle, Bot, User, Loader2, Eye, EyeOff, Lightbulb, LightbulbOff, BookmarkPlus, Check, Hammer, Book, MessageSquareQuote, Flame, RefreshCw, X } from 'lucide-react';
 import { audioBufferToWavBlob } from '../utils/audioUtils';
+import { regenerateExampleAnswers } from '../services/geminiService';
 
 interface ChatMessageProps {
   message: Message;
@@ -28,10 +29,6 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
         try {
             const newExamples = await regenerateExampleAnswers(tutorQuestion, settings);
             if (newExamples) {
-                // Mevcut metindeki Examples kısmını bul ve değiştir
-                // Eğer mevcut metinde Structure veya Vocabulary varsa onları koru, sadece Examples kısmını değiştir.
-                
-                // 1. Structure ve Vocab'i ayıkla
                 const structureMatch = currentHintsText.match(/\*\*Structure:\*\*(.*?)(?=\*\*Vocabulary:|\*\*Examples:|\*\*Example:|$)/s);
                 const vocabMatch = currentHintsText.match(/\*\*Vocabulary:\*\*(.*?)(?=\*\*Examples:|\*\*Example:|$)/s);
                 
@@ -40,7 +37,6 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
                 if (structureMatch) newFullText += `**Structure:**${structureMatch[1]}\n\n`;
                 if (vocabMatch) newFullText += `**Vocabulary:**${vocabMatch[1]}\n\n`;
                 
-                // Yeni gelen Examples text'i zaten başlıklı geliyor "**Examples:**..."
                 newFullText += newExamples;
                 
                 setCurrentHintsText(newFullText);
@@ -52,18 +48,14 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
         }
     };
 
-    // Regex ile bölümleri ayır (Structure, Vocabulary, Examples)
     const structureMatch = currentHintsText.match(/\*\*Structure:\*\*(.*?)(?=\*\*Vocabulary:|\*\*Examples:|\*\*Example:|$)/s);
     const vocabMatch = currentHintsText.match(/\*\*Vocabulary:\*\*(.*?)(?=\*\*Examples:|\*\*Example:|$)/s);
-    
-    // Examples veya Example yakala (Geriye dönük uyumluluk için)
     const exampleMatch = currentHintsText.match(/\*\*Examples?:\*\*(.*?)(?=$)/s);
 
     const structure = structureMatch ? structureMatch[1].trim() : null;
     const vocab = vocabMatch ? vocabMatch[1].trim() : null;
     const rawExamples = exampleMatch ? exampleMatch[1].trim() : null;
 
-    // Eğer format uymuyorsa standart markdown göster (Fallback)
     if (!structure && !vocab && !rawExamples) {
         return (
              <div className="bg-amber-950/30 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-200 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -72,15 +64,12 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
         );
     }
 
-    // Örnekleri Satırlara Bölme
     const examplesList = rawExamples 
         ? rawExamples.split('\n').filter(line => line.trim().length > 0) 
         : [];
 
     return (
         <div className="flex flex-col gap-2 w-full animate-in fade-in slide-in-from-top-2 duration-300">
-            
-            {/* 1. Structure Card */}
             {structure && (
                 <div className="flex flex-col bg-blue-950/40 border-l-4 border-blue-500 rounded-r-lg p-3 shadow-sm">
                     <div className="flex items-center gap-2 text-blue-300 text-xs font-bold uppercase tracking-wider mb-1">
@@ -92,7 +81,6 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
                 </div>
             )}
 
-            {/* 2. Vocabulary Card */}
             {vocab && (
                 <div className="flex flex-col bg-emerald-950/40 border-l-4 border-emerald-500 rounded-r-lg p-3 shadow-sm">
                     <div className="flex items-center gap-2 text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">
@@ -104,7 +92,6 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
                 </div>
             )}
 
-            {/* 3. Example Card (5 Variaties) */}
             {(examplesList.length > 0 || isRegenerating) && (
                 <div className="flex flex-col bg-amber-950/40 border-l-4 border-amber-500 rounded-r-lg p-3 shadow-sm transition-all">
                     <div className="flex items-center justify-between mb-2">
@@ -130,13 +117,8 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
                     ) : (
                         <div className="space-y-2">
                             {examplesList.map((line, idx) => {
-                                // Satırı Temizleme (1., 2. vb sil)
                                 const cleanLine = line.replace(/^\d+\.\s*/, '');
-                                
-                                // Tipe göre stil (Slang, Positive, etc)
                                 const isSlang = cleanLine.toLowerCase().includes('(slang)') || cleanLine.toLowerCase().includes('sokak ağzı');
-                                const isPositive = cleanLine.toLowerCase().includes('(positive)');
-                                const isNegative = cleanLine.toLowerCase().includes('(negative)');
                                 
                                 return (
                                     <div key={idx} className={`p-2 rounded border text-sm animate-in fade-in slide-in-from-left-2 duration-300 ${
@@ -161,8 +143,6 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
 export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext, settings, onSaveVocabulary }) => {
   const isUser = message.role === 'user';
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isPlayingSelection, setIsPlayingSelection] = useState(false);
-  const [isGeneratingSelection, setIsGeneratingSelection] = useState(false);
   const [selectedText, setSelectedText] = useState('');
   
   // Toggle States
@@ -170,38 +150,29 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
   const [isHintsVisible, setIsHintsVisible] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   
-  // Use HTMLAudioElement for better pitch preservation during speed changes
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const selectionAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Cleanup audios on unmount or message change
     return () => {
       stopAudio();
-      stopSelectionAudio();
     };
   }, [message.audioData]);
 
-  // Main Message Audio Logic
   const playAudio = () => {
     if (!message.audioData) return;
 
     stopAudio();
-    stopSelectionAudio();
 
-    // Convert AudioBuffer to WAV Blob URL to use with HTMLAudioElement
-    // This allows using 'preservesPitch' which is true by default on elements
     const wavBlob = audioBufferToWavBlob(message.audioData);
     const url = URL.createObjectURL(wavBlob);
     
     const audio = new Audio(url);
     audio.playbackRate = settings.speechSpeed || 1.0;
-    // Explicitly set pitch preservation (though true is default)
     audio.preservesPitch = true;
     
     audio.onended = () => {
       setIsPlaying(false);
-      URL.revokeObjectURL(url); // Cleanup
+      URL.revokeObjectURL(url);
     };
 
     audio.play().catch(e => console.error("Playback failed", e));
@@ -218,64 +189,31 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
     setIsPlaying(false);
   };
 
-  // Selection Audio Logic
   const handleTextMouseUp = () => {
     const selection = window.getSelection();
     if (selection && selection.toString().trim().length > 0) {
+      // 50 karakterden uzun seçimleri (muhtemelen tüm paragraf) yoksayabilir veya uyarabiliriz.
+      // Şimdilik serbest bırakıyoruz.
       setSelectedText(selection.toString().trim());
       setIsSaved(false); 
     } else {
+      // Don't clear immediately to allow button click if user clicked slightly outside
+    }
+  };
+
+  const clearSelection = () => {
       setSelectedText('');
-    }
-  };
-
-  const playSelectedText = async () => {
-    if (!selectedText || !audioContext) return;
-    
-    setIsGeneratingSelection(true);
-    stopAudio(); 
-    stopSelectionAudio(); 
-
-    try {
-      const audioBuffer = await generateSpeechFromText(selectedText, settings, audioContext);
-      
-      if (audioBuffer) {
-        const wavBlob = audioBufferToWavBlob(audioBuffer);
-        const url = URL.createObjectURL(wavBlob);
-        
-        const audio = new Audio(url);
-        audio.playbackRate = settings.speechSpeed || 1.0;
-        audio.preservesPitch = true;
-        
-        audio.onended = () => {
-          setIsPlayingSelection(false);
-          URL.revokeObjectURL(url);
-        };
-
-        audio.play();
-        selectionAudioRef.current = audio;
-        setIsPlayingSelection(true);
-      }
-    } catch (e) {
-      console.error("Selection audio failed", e);
-    } finally {
-      setIsGeneratingSelection(false);
-    }
-  };
-
-  const stopSelectionAudio = () => {
-    if (selectionAudioRef.current) {
-      selectionAudioRef.current.pause();
-      selectionAudioRef.current = null;
-    }
-    setIsPlayingSelection(false);
+      window.getSelection()?.removeAllRanges();
   };
 
   const handleSaveVocab = () => {
       if (selectedText && onSaveVocabulary) {
           onSaveVocabulary(selectedText, message.text);
           setIsSaved(true);
-          setTimeout(() => setIsSaved(false), 2000);
+          setTimeout(() => {
+              setIsSaved(false);
+              clearSelection();
+          }, 1500);
       }
   };
 
@@ -288,7 +226,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
           {isUser ? <User size={16} /> : <Bot size={16} />}
         </div>
 
-        {/* Message Bubble Container */}
         <div className={`flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'} w-full`}>
           
           {/* Main Bubble */}
@@ -297,7 +234,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
             className={`rounded-2xl px-5 py-4 shadow-sm text-sm leading-relaxed w-full ${
             isUser 
               ? 'bg-indigo-600 text-white rounded-tr-none' 
-              : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-tl-none selection:bg-purple-500/50 selection:text-white'
+              : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-tl-none selection:bg-emerald-500/50 selection:text-white'
           }`}>
              {message.isError ? (
                <div className="flex items-center gap-2 text-red-400">
@@ -320,9 +257,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
           {!isUser && (
               <div className="flex flex-col gap-2 w-full pl-1">
                   
-                  {/* Buttons Row */}
                   <div className="flex items-center gap-4">
-                      {/* Translation Button */}
                       {message.translation && (
                         <button 
                             onClick={() => setIsTranslationVisible(!isTranslationVisible)}
@@ -333,7 +268,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
                         </button>
                       )}
 
-                      {/* Hints Button */}
                       {message.hints && (
                         <button 
                             onClick={() => setIsHintsVisible(!isHintsVisible)}
@@ -345,7 +279,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
                       )}
                   </div>
 
-                  {/* Content Areas */}
                   {isTranslationVisible && message.translation && (
                       <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-lg p-3 text-sm text-emerald-200 italic animate-in fade-in slide-in-from-top-2 duration-300">
                           {message.translation}
@@ -365,16 +298,16 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
 
           {/* Controls Container */}
           {!isUser && (
-            <div className="flex flex-wrap gap-2 items-center mt-1">
+            <div className="flex flex-wrap gap-2 items-center mt-1 w-full relative">
+              
               {/* Main Audio Player */}
-              {message.audioData && (
+              {message.audioData && !selectedText && (
                  <button 
                    onClick={isPlaying ? stopAudio : playAudio}
-                   disabled={isPlayingSelection}
-                   className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-purple-500/50 transition-all text-xs font-medium text-purple-300 group disabled:opacity-50"
+                   className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-purple-500/50 transition-all text-xs font-medium text-purple-300 group"
                  >
                    {isPlaying ? <Pause size={14} className="fill-current" /> : <Play size={14} className="fill-current" />}
-                   {isPlaying ? 'Sesi Durdur' : 'Tamamını Oku'}
+                   {isPlaying ? 'Duraklat' : 'Dinle'}
                    {isPlaying && (
                       <div className="flex gap-0.5 items-end h-3 ml-2">
                         <span className="w-0.5 bg-purple-400 animate-[bounce_1s_infinite] h-2"></span>
@@ -385,34 +318,33 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
                  </button>
               )}
 
-              {/* Selection Controls */}
+              {/* Selection SAVE Controls - Only visible when text selected */}
               {selectedText && (
-                <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
+                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200 bg-slate-800 border border-emerald-500/30 rounded-full p-1 pr-3 shadow-lg">
                     <button
-                    onClick={isPlayingSelection ? stopSelectionAudio : playSelectedText}
-                    disabled={isGeneratingSelection || isPlaying}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-pink-500/50 transition-all text-xs font-medium text-pink-300 group disabled:opacity-50"
+                        onClick={clearSelection}
+                        className="p-1.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                        title="İptal"
                     >
-                    {isGeneratingSelection ? (
-                        <Loader2 size={14} className="animate-spin" />
-                    ) : isPlayingSelection ? (
-                        <Pause size={14} className="fill-current" />
-                    ) : (
-                        <TextSelect size={14} />
-                    )}
-                    {isGeneratingSelection ? '...' : isPlayingSelection ? 'Durdur' : 'Seçimi Oku'}
+                        <X size={14} />
                     </button>
+
+                    <div className="h-4 w-px bg-slate-700"></div>
+
+                    <span className="text-xs text-slate-300 max-w-[150px] truncate px-1 italic">
+                        "{selectedText}"
+                    </span>
 
                     <button
                         onClick={handleSaveVocab}
                         disabled={isSaved}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-xs font-medium ${
+                        className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all text-xs font-bold ${
                             isSaved 
-                            ? 'bg-emerald-900/30 border-emerald-500 text-emerald-300' 
-                            : 'bg-slate-800 border-slate-700 hover:bg-slate-700 hover:border-blue-500/50 text-blue-300'
+                            ? 'bg-emerald-600 border-emerald-500 text-white' 
+                            : 'bg-emerald-900/40 border-emerald-500/50 text-emerald-400 hover:bg-emerald-900/60'
                         }`}
                     >
-                        {isSaved ? <Check size={14} /> : <BookmarkPlus size={14} />}
+                        {isSaved ? <Check size={12} /> : <BookmarkPlus size={12} />}
                         {isSaved ? 'Kaydedildi' : 'Kaydet'}
                     </button>
                 </div>

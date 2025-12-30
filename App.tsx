@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS, CustomWord } from './types';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -6,8 +7,9 @@ import { InputArea } from './components/InputArea';
 import { LiveSession } from './components/LiveSession';
 import { DashboardModal } from './components/DashboardModal';
 import { PracticeModal } from './components/PracticeModal';
+import { GameArenaModal } from './components/GameArenaModal'; // NEW IMPORT
 import { sendMessageToGemini, generateSpeechFromText } from './services/geminiService';
-import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail } from 'lucide-react';
+import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2 } from 'lucide-react'; // Added Gamepad2
 
 const App: React.FC = () => {
   // State initialization with LocalStorage
@@ -39,6 +41,8 @@ const App: React.FC = () => {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isLiveSessionOpen, setIsLiveSessionOpen] = useState(false);
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
+  const [isGameArenaOpen, setIsGameArenaOpen] = useState(false); // NEW STATE
+  
   const [practiceWords, setPracticeWords] = useState<CustomWord[]>([]);
 
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -107,25 +111,30 @@ const App: React.FC = () => {
       setCustomWords(prev => [...prev, ...newWords]);
   };
 
-  // Yeni fonksiyon: Tüm listeyi güncellemek için (Kategorizasyon sonrası)
   const handleUpdateWordList = (updatedWords: CustomWord[]) => {
       setCustomWords(updatedWords);
   };
 
   const startPractice = (words: CustomWord[]) => {
-      // Şimdilik hepsini gönderiyoruz, istenirse seviye filtresi eklenebilir.
-      // Karıştır (Shuffle)
       const shuffled = [...words].sort(() => 0.5 - Math.random());
       setPracticeWords(shuffled.slice(0, 10)); // Her seferinde 10 kelime
       setIsDashboardOpen(false);
       setIsPracticeOpen(true);
   };
 
-  const handlePracticeComplete = (avgScore: number, wordsCount: number) => {
+  const handlePracticeComplete = (score: number, wordsCount: number) => {
       setStats(prev => ({
           ...prev,
-          practiceScoreTotal: prev.practiceScoreTotal + avgScore,
+          practiceScoreTotal: prev.practiceScoreTotal + score,
           wordsPracticed: prev.wordsPracticed + wordsCount
+      }));
+  };
+
+  // --- NEW: Game Stats Update ---
+  const handleGameStatsUpdate = (points: number) => {
+      setStats(prev => ({
+          ...prev,
+          totalGamePoints: (prev.totalGamePoints || 0) + points
       }));
   };
 
@@ -169,7 +178,6 @@ const App: React.FC = () => {
           timestamp: Date.now()
         };
 
-        // İstatistik güncelleme (Hata düzeltme yapıldıysa varsayım)
         if (result.text.includes("Did you mean") || result.text.includes("Correction:")) {
             setStats(prev => ({ ...prev, totalErrorsFixed: prev.totalErrorsFixed + 1 }));
         }
@@ -206,7 +214,6 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
           const base64String = reader.result as string;
-          // data:audio/webm;base64,.... kısmını temizle
           const base64Data = base64String.split(',')[1];
           const mimeType = audioBlob.type || 'audio/webm';
           
@@ -243,10 +250,20 @@ const App: React.FC = () => {
                  <>
                     <button 
                         onClick={() => setIsLiveSessionOpen(true)}
-                        className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-500/30 transition-all font-medium text-sm border border-emerald-400/20 hover:scale-105 active:scale-95 group"
+                        className="flex items-center gap-2 px-4 md:px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-500/30 transition-all font-medium text-sm border border-emerald-400/20 hover:scale-105 active:scale-95 group"
                     >
                         <Headset className="w-4 h-4 group-hover:animate-bounce" />
                         <span className="hidden md:inline">Canlı Ders</span>
+                    </button>
+
+                    {/* NEW GAME ARENA BUTTON */}
+                    <button 
+                        onClick={() => setIsGameArenaOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30 transition-all font-medium text-sm border border-indigo-400/20 hover:scale-105 active:scale-95 group"
+                        title="Oyun Arenası"
+                    >
+                        <Gamepad2 className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                        <span className="hidden md:inline">Oyun</span>
                     </button>
                     
                     <button 
@@ -355,6 +372,11 @@ const App: React.FC = () => {
                 setIsLiveSessionOpen(false);
                 setStats(prev => ({...prev, sessionsCompleted: prev.sessionsCompleted + 1}));
             }}
+            onSaveVocabulary={handleSaveVocabulary}
+            onOpenGameArena={() => {
+                setIsLiveSessionOpen(false);
+                setIsGameArenaOpen(true);
+            }}
           />
       )}
 
@@ -366,6 +388,17 @@ const App: React.FC = () => {
             settings={settings}
             audioContext={audioContext}
             onComplete={handlePracticeComplete}
+          />
+      )}
+
+      {/* NEW GAME ARENA MODAL */}
+      {isGameArenaOpen && (
+          <GameArenaModal 
+            isOpen={isGameArenaOpen}
+            onClose={() => setIsGameArenaOpen(false)}
+            vocabulary={vocabulary}
+            settings={settings}
+            onUpdateStats={handleGameStatsUpdate}
           />
       )}
     </div>

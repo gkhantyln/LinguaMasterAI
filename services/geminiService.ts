@@ -1,5 +1,6 @@
-import { GoogleGenAI, Modality, Content } from "@google/genai";
-import { AppSettings, LessonMode, PracticeResult } from "../types";
+
+import { GoogleGenAI, Modality, Content, Type } from "@google/genai";
+import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion } from "../types";
 import { SYSTEM_DEFINITION } from "../constants";
 import { decodeBase64, decodeAudioData } from "../utils/audioUtils";
 
@@ -23,6 +24,7 @@ export const sendMessageToGemini = async (
 ): Promise<{ text: string, translation?: string, hints?: string }> => {
   try {
     const personaInstruction = SYSTEM_DEFINITION.personas[settings.tutorPersona];
+    const styleInstruction = SYSTEM_DEFINITION.speaking_styles[settings.speakingStyle];
     
     let modeInstruction = "";
     if (settings.lessonMode === LessonMode.Drill) {
@@ -38,19 +40,27 @@ export const sendMessageToGemini = async (
         settings.proficiencyLevel === 'B1-B2 (Intermediate)' ? "B1-B2" : "C1-C2"
     ];
 
+    const dialectInstruction = settings.targetLanguage === 'English' 
+        ? `Use ${settings.englishDialect} spelling, vocabulary, and idioms.` 
+        : "";
+
     const systemInstruction = `
 ${JSON.stringify(SYSTEM_DEFINITION)}
 
 CURRENT SESSION CONTEXT:
 - Target Language: ${settings.targetLanguage}
+- Native Language (User): ${settings.nativeLanguage}
 - User Level: ${settings.proficiencyLevel}
 - Tutor Persona: ${settings.tutorPersona} (${personaInstruction})
+- Speaking Style: ${settings.speakingStyle} (${styleInstruction})
+- English Dialect: ${dialectInstruction}
 - Session Mode: ${settings.lessonMode.toUpperCase()} (${modeInstruction})
 - Focus Topic / Scenario: ${settings.focusTopic || "General Conversation"}
 
 INSTRUCTION:
 Act as the defined Tutor Persona (or Character in Roleplay).
 Communicate primarily in ${settings.targetLanguage}.
+Use the defined **Speaking Style** (e.g., if 'street_slang', use slang/informal tone).
 Follow this correction policy: ${correctionRule}.
 Adhere strictly to the Session Mode rules.
 
@@ -60,7 +70,7 @@ IF SESSION MODE IS ROLEPLAY:
 - Start or continue the scenario naturally.
 - Do NOT act like a teacher unless the user breaks character to ask for help.
 
-REMEMBER THE 3-PART FORMAT: Response ||| Translation ||| Hints
+REMEMBER THE 3-PART FORMAT: Response ||| Translation (in ${settings.nativeLanguage}) ||| Hints (explained in ${settings.nativeLanguage})
 `;
 
     const modelId = "gemini-3-flash-preview";
@@ -129,17 +139,18 @@ export const regenerateExampleAnswers = async (
             CONTEXT: The language tutor asked the student: "${tutorQuestion}"
             TARGET LANGUAGE: ${settings.targetLanguage}
             USER LEVEL: ${settings.proficiencyLevel}
+            NATIVE LANGUAGE: ${settings.nativeLanguage}
 
             TASK: Provide 5 NEW and DIFFERENT example answers the student can use to reply to this specific question.
             They must be directly relevant to the question asked.
 
             STRICT OUTPUT FORMAT (Do not include Structure or Vocabulary, ONLY the Examples list):
             **Examples:**
-            1. (Positive) [Sentence] ([TR Translation])
-            2. (Negative) [Sentence] ([TR Translation])
-            3. (Question) [Sentence] ([TR Translation])
-            4. (Formal) [Sentence] ([TR Translation])
-            5. (Slang) [Sentence] ([TR Translation])
+            1. (Positive) [Sentence] ([Native Lang Translation])
+            2. (Negative) [Sentence] ([Native Lang Translation])
+            3. (Question) [Sentence] ([Native Lang Translation])
+            4. (Formal) [Sentence] ([Native Lang Translation])
+            5. (Slang) [Sentence] ([Native Lang Translation])
             `
         });
         
@@ -156,10 +167,6 @@ export const categorizeWordsBatch = async (
     targetLanguage: string
 ): Promise<Record<string, string>> => {
     try {
-        // Gemini likes reasonable context sizes. 
-        // We will send a prompt to categorize the list.
-        // If the list is too long, the caller should chunk it, but for simplicity here we assume < 100 words per call or handle it here.
-        
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: `
@@ -274,6 +281,156 @@ export const evaluateVocabularyPractice = async (
     }
 };
 
+// --- GAME CONTENT GENERATION ---
+export const generateGameContent = async (
+    words: string[],
+    mode: GameMode,
+    targetLanguage: string
+): Promise<GameQuestion[]> => {
+    try {
+        let prompt = "";
+        
+        if (mode === GameMode.Matching) {
+            prompt = `
+            Task: Create a matching game for these words.
+            Target Language: ${targetLanguage}
+            Words: ${JSON.stringify(words)}
+            
+            Output: JSON Array of objects.
+            Format: [{ "id": "1", "type": "matching", "pair": { "word": "Apple", "translation": "Elma" } }, ...]
+            Ensure translations are accurate in Turkish.
+            `;
+        } else if (mode === GameMode.Cloze) {
+            prompt = `
+            Task: Create fill-in-the-blank (cloze) questions.
+            Target Language: ${targetLanguage}
+            Words: ${JSON.stringify(words)}
+            
+            For each word, create a simple sentence where the word is missing (replaced by _____).
+            Provide 3 incorrect options (distractors) that are also words in ${targetLanguage}.
+            IMPORTANT: Provide the full TURKISH translation of the sentence for the hint system.
+            
+            Output: JSON Array.
+            Format: 
+            [
+              {
+                "id": "unique_id",
+                "type": "cloze",
+                "questionText": "I ate a red _____.",
+                "correctAnswer": "apple",
+                "options": ["apple", "car", "dog", "run"],
+                "sentenceTranslation": "Kırmızı bir elma yedim."
+              }
+            ]
+            `;
+        } else if (mode === GameMode.Scramble) {
+             prompt = `
+            Task: Create sentence scramble puzzles.
+            Target Language: ${targetLanguage}
+            Words: ${JSON.stringify(words)}
+            
+            For each word, create a correct, simple sentence using that word.
+            Then break that sentence into shuffled parts.
+            IMPORTANT: Provide the full TURKISH translation of the sentence for the hint system.
+            
+            Output: JSON Array.
+            Format:
+            [
+              {
+                "id": "unique_id",
+                "type": "scramble",
+                "correctSentence": "I like to eat apples",
+                "scrambledParts": ["eat", "apples", "I", "like", "to"],
+                "sentenceTranslation": "Elma yemeyi severim."
+              }
+            ]
+            `;
+        } else if (mode === GameMode.Quiz) {
+             prompt = `
+            Task: Create a multiple-choice vocabulary quiz.
+            Target Language: ${targetLanguage}
+            Words: ${JSON.stringify(words)}
+            
+            For each word, provide the correct Turkish translation as the answer.
+            Provide 3 incorrect Turkish translations as distractors.
+            Also provide a simple definition in ${targetLanguage} as a hint.
+            
+            Output: JSON Array.
+            Format:
+            [
+              {
+                "id": "unique_id",
+                "type": "quiz",
+                "word": "apple",
+                "correctMeaning": "Elma",
+                "wrongMeanings": ["Araba", "Koşmak", "Masa"],
+                "hintText": "A round red fruit."
+              }
+            ]
+            `;
+        } else if (mode === GameMode.Listening) {
+             prompt = `
+            Task: Create a listening identification game.
+            Target Language: ${targetLanguage}
+            Words: ${JSON.stringify(words)}
+            
+            For each word, simply return the word itself as the correct answer.
+            Provide 3 incorrect words in ${targetLanguage} as options (distractors).
+            Also provide a hint which is the Turkish translation.
+            
+            Output: JSON Array.
+            Format:
+            [
+              {
+                "id": "unique_id",
+                "type": "listening",
+                "word": "apple", 
+                "options": ["apple", "car", "run", "blue"],
+                "hintText": "Elma"
+              }
+            ]
+            `;
+        } else if (mode === GameMode.Speaking) {
+             prompt = `
+            Task: Create a pronunciation game.
+            Target Language: ${targetLanguage}
+            Words: ${JSON.stringify(words)}
+            
+            For each word, return the word itself.
+            Provide the IPA phonetic transcription if possible as a hint.
+            Provide the Turkish translation as a hint.
+            
+            Output: JSON Array.
+            Format:
+            [
+              {
+                "id": "unique_id",
+                "type": "speaking",
+                "word": "apple",
+                "hintText": "/ˈæp.əl/ (Elma)"
+              }
+            ]
+            `;
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const jsonStr = response.text || "[]";
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
+
+    } catch (error) {
+        console.error("Game generation failed", error);
+        return [];
+    }
+}
+
 export const generateSpeechFromText = async (
   text: string,
   settings: AppSettings,
@@ -281,8 +438,6 @@ export const generateSpeechFromText = async (
   isTranslation: boolean = false
 ): Promise<AudioBuffer | null> => {
   try {
-    // Eğer çeviri ise sabit Puck (daha nötr), değilse ayarlardaki ses.
-    // Eğer ayarda ses yoksa varsayılan Puck.
     const selectedVoice = isTranslation ? 'Puck' : (settings.voiceName || 'Puck');
 
     const response = await ai.models.generateContent({

@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
-import { AppSettings, TargetLanguage, ProficiencyLevel, TutorPersona, LessonMode } from '../types';
+import { AppSettings, TargetLanguage, ProficiencyLevel, TutorPersona, LessonMode, NativeLanguage, EnglishDialect, SpeakingStyle } from '../types';
 import { SUGGESTED_TOPICS, ROLEPLAY_SCENARIOS, VOICE_OPTIONS } from '../constants';
-import { Settings, GraduationCap, User, Globe, MessageCircle, Volume2, Mic2, Layout, Sliders, BookOpen, Music, Theater } from 'lucide-react';
+import { Settings, GraduationCap, User, Globe, MessageCircle, Volume2, Mic2, Layout, Sliders, BookOpen, Music, Theater, Mic, Languages } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: AppSettings;
@@ -102,17 +103,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             <Theater size={16} /> Diyalog / Rol Yapma
                         </button>
                     </div>
-                    <p className="text-[10px] text-slate-500 px-1">
-                        {settings.lessonMode === LessonMode.Conversation && "Rahat, doğal bir konuşma akışı."}
-                        {settings.lessonMode === LessonMode.Drill && "Seri sorularla pratik yapma modu."}
-                        {settings.lessonMode === LessonMode.Roleplay && "Belirli bir senaryoda (örn: Restoran, Havaalanı) AI ile karşılıklı rol yapın."}
-                    </p>
                 </div>
 
-                {/* Language */}
+                {/* Native Language */}
                 <div className="space-y-3">
                     <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
-                        <Globe className="w-3 h-3" /> Hedef Dil
+                        <Languages className="w-3 h-3" /> Ana Diliniz
+                    </label>
+                    <div className="relative">
+                        <select
+                            value={settings.nativeLanguage}
+                            onChange={(e) => handleChange('nativeLanguage', e.target.value as NativeLanguage)}
+                            className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg p-3 text-sm focus:border-emerald-500 outline-none appearance-none"
+                        >
+                            {Object.values(NativeLanguage).map(lang => (
+                                <option key={lang} value={lang}>{lang}</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
+                    </div>
+                </div>
+
+                {/* Target Language */}
+                <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                        <Globe className="w-3 h-3" /> Hedef Dil (Öğrenilen)
                     </label>
                     <div className="relative">
                         <select
@@ -125,6 +140,60 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             ))}
                         </select>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
+                    </div>
+                </div>
+
+                {/* English Dialect (Conditional) */}
+                {settings.targetLanguage === 'English' && (
+                    <div className="space-y-3 animate-in fade-in">
+                        <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                            <Mic className="w-3 h-3" /> İngilizce Aksanı
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={settings.englishDialect}
+                                onChange={(e) => handleChange('englishDialect', e.target.value as EnglishDialect)}
+                                className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg p-3 text-sm focus:border-emerald-500 outline-none appearance-none"
+                            >
+                                {Object.values(EnglishDialect).map(dialect => (
+                                    <option key={dialect} value={dialect}>{dialect}</option>
+                                ))}
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Speaking Style */}
+                <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                        <MessageCircle className="w-3 h-3" /> Konuşma Tarzı
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            onClick={() => handleChange('speakingStyle', SpeakingStyle.Standard)}
+                            className={`p-2 rounded-lg border text-xs font-medium transition-all ${settings.speakingStyle === SpeakingStyle.Standard ? 'bg-indigo-900/50 border-indigo-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                        >
+                            Standard (Düzgün)
+                        </button>
+                        <button
+                            onClick={() => handleChange('speakingStyle', SpeakingStyle.Casual)}
+                            className={`p-2 rounded-lg border text-xs font-medium transition-all ${settings.speakingStyle === SpeakingStyle.Casual ? 'bg-indigo-900/50 border-indigo-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                        >
+                            Casual (Günlük)
+                        </button>
+                        <button
+                            onClick={() => handleChange('speakingStyle', SpeakingStyle.Formal)}
+                            className={`p-2 rounded-lg border text-xs font-medium transition-all ${settings.speakingStyle === SpeakingStyle.Formal ? 'bg-indigo-900/50 border-indigo-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                        >
+                            Formal (Resmi)
+                        </button>
+                        <button
+                            onClick={() => handleChange('speakingStyle', SpeakingStyle.StreetSlang)}
+                            className={`p-2 rounded-lg border text-xs font-medium transition-all ${settings.speakingStyle === SpeakingStyle.StreetSlang ? 'bg-rose-900/50 border-rose-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                        >
+                            Street Slang (Sokak)
+                        </button>
                     </div>
                 </div>
 
@@ -153,7 +222,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 {/* Persona */}
                 <div className="space-y-3">
                     <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
-                        <User className="w-3 h-3" /> Öğretmen Tarzı
+                        <User className="w-3 h-3" /> Öğretmen Kişiliği
                     </label>
                     <div className="relative">
                         <select
