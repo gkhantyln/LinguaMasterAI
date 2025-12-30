@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Content, Type } from "@google/genai";
-import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion } from "../types";
+import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion, StoryGenre, StoryState } from "../types";
 import { SYSTEM_DEFINITION } from "../constants";
 import { decodeBase64, decodeAudioData } from "../utils/audioUtils";
 
@@ -14,8 +14,15 @@ const ai = new GoogleGenAI({ apiKey: API_KEY || '' });
 
 let history: Content[] = [];
 
+// Story History needs to be separate or managed within the component
+let storyHistory: Content[] = [];
+
 export const resetHistory = () => {
   history = [];
+};
+
+export const resetStoryHistory = () => {
+    storyHistory = [];
 };
 
 export const sendMessageToGemini = async (
@@ -280,6 +287,113 @@ export const evaluateVocabularyPractice = async (
         };
     }
 };
+
+// --- STORY MODE GENERATION ---
+export const generateInteractiveStory = async (
+    genre: StoryGenre,
+    settings: AppSettings,
+    userChoice: string | null = null,
+    isStart: boolean = true
+): Promise<StoryState> => {
+    try {
+        const level = settings.proficiencyLevel;
+        const targetLang = settings.targetLanguage;
+        const nativeLang = settings.nativeLanguage;
+
+        // Push User Choice to history if continuing
+        if (!isStart && userChoice) {
+            storyHistory.push({
+                role: 'user',
+                parts: [{ text: `I choose: ${userChoice}. Continue the story.` }]
+            });
+        }
+
+        const prompt = isStart ? `
+            ROLE: Interactive Fiction Narrator.
+            GENRE: ${genre}.
+            TARGET LANGUAGE: ${targetLang}.
+            USER LEVEL: ${level} (Adjust vocabulary/grammar complexity accordingly).
+            
+            TASK: Start a new, engaging story where the user is the protagonist (You/Sen).
+            
+            OUTPUT JSON FORMAT:
+            {
+                "title": "A catchy title in ${targetLang}",
+                "narrative": "The first segment of the story (3-4 sentences max). Engaging and descriptive.",
+                "narrativeTranslation": "Full translation in ${nativeLang}",
+                "choices": ["Option A in ${targetLang}", "Option B in ${targetLang}", "Option C in ${targetLang}"],
+                "imagePrompt": "A detailed visual description of the current scene for an image generator",
+                "isEnding": false
+            }
+        ` : `
+            ROLE: Interactive Fiction Narrator.
+            TARGET LANGUAGE: ${targetLang}.
+            
+            TASK: Continue the story based on the user's last choice.
+            If the story should end based on the choice, set "isEnding" to true and provide a conclusion.
+            Otherwise, provide the next segment and 3 new choices.
+            
+            OUTPUT JSON FORMAT:
+            {
+                "title": "Same title as before",
+                "narrative": "Next story segment (3-4 sentences).",
+                "narrativeTranslation": "Translation in ${nativeLang}",
+                "choices": ["Option A", "Option B", "Option C"] (Empty if isEnding is true),
+                "imagePrompt": "Visual description of the new scene",
+                "isEnding": boolean
+            }
+        `;
+
+        // If starting, clear history
+        if (isStart) storyHistory = [];
+
+        // Add prompt to history (conceptually, though for gemini-api we usually send the whole history)
+        // Here we just send the new prompt with context if we want to be stateless, 
+        // BUT for a story we need context.
+        
+        // Actually, for GenerateContent with history, we construct the array.
+        // Let's create a temporary history array including the system prompt for this specific turn
+        const currentTurnContents = [...storyHistory, { role: 'user', parts: [{ text: prompt }] }];
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: currentTurnContents,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const jsonStr = response.text || "{}";
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        const result: StoryState = JSON.parse(cleanJson);
+
+        // Append Model Response to History so next turn remembers
+        storyHistory.push({ role: 'user', parts: [{ text: prompt }] }); // We store the prompt we sent as user 'intent' or just the raw prompt
+        // Better: Push the actual interaction. 
+        // If isStart:
+        if (isStart) {
+             storyHistory = [
+                 { role: 'user', parts: [{ text: `Start a ${genre} story in ${targetLang}.` }] },
+                 { role: 'model', parts: [{ text: result.narrative }] }
+             ];
+        } else {
+             // We already pushed user choice above. Now push model narrative.
+             storyHistory.push({ role: 'model', parts: [{ text: result.narrative }] });
+        }
+
+        return result;
+
+    } catch (error) {
+        console.error("Story generation failed", error);
+        return {
+            title: "Error",
+            narrative: "Something went wrong generating the story. Please try again.",
+            choices: [],
+            isEnding: true
+        };
+    }
+};
+
 
 // --- GAME CONTENT GENERATION ---
 export const generateGameContent = async (

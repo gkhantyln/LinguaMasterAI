@@ -1,15 +1,17 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS, CustomWord } from './types';
+import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS, CustomWord, Quest, DailyStat } from './types';
+import { BADGE_DEFINITIONS, DAILY_QUEST_TEMPLATES } from './constants';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ChatMessage } from './components/ChatMessage';
 import { InputArea } from './components/InputArea';
 import { LiveSession } from './components/LiveSession';
 import { DashboardModal } from './components/DashboardModal';
 import { PracticeModal } from './components/PracticeModal';
-import { GameArenaModal } from './components/GameArenaModal'; // NEW IMPORT
+import { GameArenaModal } from './components/GameArenaModal';
+import { StoryModeModal } from './components/StoryModeModal';
 import { sendMessageToGemini, generateSpeechFromText } from './services/geminiService';
-import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2 } from 'lucide-react'; // Added Gamepad2
+import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2, Book } from 'lucide-react';
 
 const App: React.FC = () => {
   // State initialization with LocalStorage
@@ -30,7 +32,13 @@ const App: React.FC = () => {
 
   const [stats, setStats] = useState<UserStats>(() => {
     const saved = localStorage.getItem('lingua_stats');
-    return saved ? JSON.parse(saved) : DEFAULT_STATS;
+    const loadedStats = saved ? JSON.parse(saved) : DEFAULT_STATS;
+    // Merge with defaults to ensure new fields (streak, quests, dailyActivity) exist if loading old data
+    return { 
+        ...DEFAULT_STATS, 
+        ...loadedStats, 
+        dailyActivity: loadedStats.dailyActivity || [] 
+    };
   });
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -41,7 +49,8 @@ const App: React.FC = () => {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isLiveSessionOpen, setIsLiveSessionOpen] = useState(false);
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
-  const [isGameArenaOpen, setIsGameArenaOpen] = useState(false); // NEW STATE
+  const [isGameArenaOpen, setIsGameArenaOpen] = useState(false);
+  const [isStoryModeOpen, setIsStoryModeOpen] = useState(false);
   
   const [practiceWords, setPracticeWords] = useState<CustomWord[]>([]);
 
@@ -66,6 +75,49 @@ const App: React.FC = () => {
     localStorage.setItem('lingua_stats', JSON.stringify(stats));
   }, [stats]);
 
+  // --- STREAK & QUEST INITIALIZATION LOGIC ---
+  useEffect(() => {
+      const today = new Date().toISOString().split('T')[0];
+      const lastDate = stats.lastLoginDate;
+
+      let newStreak = stats.currentStreak;
+      
+      // Streak Check
+      if (lastDate !== today) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+          if (lastDate === yesterdayStr) {
+              newStreak += 1; // Consecutive day
+          } else {
+              newStreak = 1; // Streak broken or first time
+          }
+      }
+
+      // Quest Reset Check
+      let currentQuests = [...stats.dailyQuests];
+      if (stats.lastQuestDate !== today) {
+          // Generate 3 random quests
+          const shuffled = [...DAILY_QUEST_TEMPLATES].sort(() => 0.5 - Math.random());
+          currentQuests = shuffled.slice(0, 3).map(t => ({
+              ...t,
+              progress: 0,
+              isCompleted: false
+          }));
+      }
+
+      setStats(prev => ({
+          ...prev,
+          lastLoginDate: today,
+          currentStreak: newStreak,
+          maxStreak: Math.max(prev.maxStreak, newStreak),
+          dailyQuests: currentQuests,
+          lastQuestDate: today
+      }));
+
+  }, []); // Run once on mount
+
   useEffect(() => {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: 24000, 
@@ -89,6 +141,106 @@ const App: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+
+  // --- ANALYTICS HELPER ---
+  const updateDailyActivity = (updates: Partial<DailyStat>) => {
+      setStats(prev => {
+          const today = new Date().toISOString().split('T')[0];
+          const newActivity = [...prev.dailyActivity];
+          const todayIndex = newActivity.findIndex(a => a.date === today);
+
+          if (todayIndex >= 0) {
+              newActivity[todayIndex] = {
+                  ...newActivity[todayIndex],
+                  messageCount: newActivity[todayIndex].messageCount + (updates.messageCount || 0),
+                  wordsLearned: newActivity[todayIndex].wordsLearned + (updates.wordsLearned || 0),
+                  minutesSpent: newActivity[todayIndex].minutesSpent + (updates.minutesSpent || 0)
+              };
+          } else {
+              newActivity.push({
+                  date: today,
+                  messageCount: updates.messageCount || 0,
+                  wordsLearned: updates.wordsLearned || 0,
+                  minutesSpent: updates.minutesSpent || 0
+              });
+          }
+
+          // Keep last 30 days
+          if (newActivity.length > 30) {
+              newActivity.shift();
+          }
+
+          return { ...prev, dailyActivity: newActivity };
+      });
+  };
+
+
+  // --- GAMIFICATION HELPERS ---
+  const checkBadges = (currentStats: UserStats): string[] => {
+      const newBadges: string[] = [];
+      BADGE_DEFINITIONS.forEach(badge => {
+          if (!currentStats.badges.includes(badge.id)) {
+              if (currentStats[badge.conditionType] >= badge.threshold) {
+                  newBadges.push(badge.id);
+                  // Notify user
+                  setMessages(prev => [...prev, {
+                      id: Date.now().toString(),
+                      role: 'system',
+                      text: `🎉 **TEBRİKLER! YENİ ROZET KAZANDINIZ:** ${badge.name} ${badge.icon === 'Flame' ? '🔥' : '🏆'}\n\n${badge.description}`,
+                      timestamp: Date.now()
+                  }]);
+              }
+          }
+      });
+      return newBadges;
+  };
+
+  const updateProgress = (type: Quest['type'], amount: number = 1) => {
+      setStats(prev => {
+          // 1. Update Core Stats
+          const newStats = { ...prev };
+          
+          // 2. Update Quests
+          const updatedQuests = newStats.dailyQuests.map(q => {
+              if (q.type === type && !q.isCompleted) {
+                  const newProgress = Math.min(q.target, q.progress + amount);
+                  const completed = newProgress >= q.target;
+                  if (completed && !q.isCompleted) {
+                      // Quest completed just now
+                      newStats.currentXP += q.xpReward;
+                       setMessages(prevMessages => [...prevMessages, {
+                          id: Date.now().toString(),
+                          role: 'system',
+                          text: `✅ **GÜNLÜK GÖREV TAMAMLANDI:** ${q.description} (+${q.xpReward} XP)`,
+                          timestamp: Date.now()
+                      }]);
+                  }
+                  return { ...q, progress: newProgress, isCompleted: completed };
+              }
+              return q;
+          });
+          newStats.dailyQuests = updatedQuests;
+
+          // 3. Level Up Check (Simple logic: Level = XP / 1000)
+          const newLevel = Math.floor(newStats.currentXP / 1000) + 1;
+          if (newLevel > newStats.level) {
+               newStats.level = newLevel;
+               setMessages(prevMessages => [...prevMessages, {
+                  id: Date.now().toString(),
+                  role: 'system',
+                  text: `🚀 **SEVİYE ATLADIN!** Artık Seviye ${newLevel} oldun!`,
+                  timestamp: Date.now()
+              }]);
+          }
+
+          // 4. Check Badges
+          const unlockedBadges = checkBadges(newStats);
+          newStats.badges = [...newStats.badges, ...unlockedBadges];
+
+          return newStats;
+      });
+  };
+
   const handleSaveVocabulary = (word: string, context: string) => {
       const newItem: VocabularyItem = {
           id: Date.now().toString(),
@@ -98,7 +250,13 @@ const App: React.FC = () => {
           timestamp: Date.now()
       };
       setVocabulary(prev => [newItem, ...prev]);
-      setStats(prev => ({ ...prev, vocabularyCount: prev.vocabularyCount + 1 }));
+      
+      setStats(prev => {
+          const next = { ...prev, vocabularyCount: prev.vocabularyCount + 1 };
+          return next;
+      });
+      updateProgress('vocab', 1);
+      updateDailyActivity({ wordsLearned: 1 });
   };
 
   const handleDeleteVocabulary = (id: string) => {
@@ -128,14 +286,26 @@ const App: React.FC = () => {
           practiceScoreTotal: prev.practiceScoreTotal + score,
           wordsPracticed: prev.wordsPracticed + wordsCount
       }));
+      // Practice counts as XP maybe? Let's give flat XP
+      setStats(prev => ({ ...prev, currentXP: prev.currentXP + 20 }));
   };
 
-  // --- NEW: Game Stats Update ---
   const handleGameStatsUpdate = (points: number) => {
       setStats(prev => ({
           ...prev,
           totalGamePoints: (prev.totalGamePoints || 0) + points
       }));
+      updateProgress('game_points', points);
+  };
+
+  // New: Story Complete
+  const handleStoryComplete = () => {
+      setStats(prev => ({
+          ...prev,
+          storiesCompleted: (prev.storiesCompleted || 0) + 1
+      }));
+      updateProgress('session', 1);
+      updateDailyActivity({ minutesSpent: 10 }); // Approx
   };
 
   const processResponse = async (input: string | { audioBase64: string, mimeType: string }) => {
@@ -162,7 +332,12 @@ const App: React.FC = () => {
       };
   
       setMessages(prev => [...prev, userMsg]);
+      
+      // Update Message Stats & Quests & Analytics
       setStats(prev => ({ ...prev, totalMessages: prev.totalMessages + 1 }));
+      updateProgress('message', 1);
+      updateDailyActivity({ messageCount: 1 });
+
       setIsLoading(true);
   
       try {
@@ -239,7 +414,7 @@ const App: React.FC = () => {
             <h1 className="font-serif text-lg font-semibold tracking-wide text-slate-100">LinguaMaster AI</h1>
             <div className="flex items-center gap-2">
                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                 Language Tutor
+                 Language Tutor • Lvl {stats.level}
                </span>
             </div>
           </div>
@@ -256,7 +431,6 @@ const App: React.FC = () => {
                         <span className="hidden md:inline">Canlı Ders</span>
                     </button>
 
-                    {/* NEW GAME ARENA BUTTON */}
                     <button 
                         onClick={() => setIsGameArenaOpen(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30 transition-all font-medium text-sm border border-indigo-400/20 hover:scale-105 active:scale-95 group"
@@ -265,13 +439,26 @@ const App: React.FC = () => {
                         <Gamepad2 className="w-4 h-4 group-hover:rotate-12 transition-transform" />
                         <span className="hidden md:inline">Oyun</span>
                     </button>
+
+                    <button 
+                        onClick={() => setIsStoryModeOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-full shadow-lg shadow-amber-600/30 transition-all font-medium text-sm border border-amber-400/20 hover:scale-105 active:scale-95 group"
+                        title="İnteraktif Hikaye Modu"
+                    >
+                        <Book className="w-4 h-4" />
+                        <span className="hidden md:inline">Hikaye</span>
+                    </button>
                     
                     <button 
                         onClick={() => setIsDashboardOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-full border border-slate-700 transition-all font-medium text-sm hover:scale-105 active:scale-95"
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-full border border-slate-700 transition-all font-medium text-sm hover:scale-105 active:scale-95 relative"
                     >
                         <BookOpen className="w-4 h-4" />
                         <span className="hidden md:inline">Profil</span>
+                        {/* Notification Dot if quests available */}
+                        {stats.dailyQuests.some(q => !q.isCompleted) && (
+                            <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border border-slate-900"></span>
+                        )}
                     </button>
                  </>
              )}
@@ -371,6 +558,8 @@ const App: React.FC = () => {
             onClose={() => {
                 setIsLiveSessionOpen(false);
                 setStats(prev => ({...prev, sessionsCompleted: prev.sessionsCompleted + 1}));
+                updateProgress('session', 1);
+                updateDailyActivity({ minutesSpent: 15 }); // Approx
             }}
             onSaveVocabulary={handleSaveVocabulary}
             onOpenGameArena={() => {
@@ -391,7 +580,6 @@ const App: React.FC = () => {
           />
       )}
 
-      {/* NEW GAME ARENA MODAL */}
       {isGameArenaOpen && (
           <GameArenaModal 
             isOpen={isGameArenaOpen}
@@ -399,6 +587,16 @@ const App: React.FC = () => {
             vocabulary={vocabulary}
             settings={settings}
             onUpdateStats={handleGameStatsUpdate}
+          />
+      )}
+
+      {/* STORY MODE MODAL */}
+      {isStoryModeOpen && (
+          <StoryModeModal
+             isOpen={isStoryModeOpen}
+             onClose={() => setIsStoryModeOpen(false)}
+             settings={settings}
+             onComplete={handleStoryComplete}
           />
       )}
     </div>

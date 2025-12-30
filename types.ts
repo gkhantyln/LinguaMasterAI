@@ -100,6 +100,27 @@ export enum GameMode {
     Speaking = 'speaking' // NEW: Konuşma (Telaffuz)
 }
 
+// --- STORY TYPES (NEW) ---
+export enum StoryGenre {
+    Mystery = 'Mystery & Detective',
+    SciFi = 'Science Fiction',
+    Fantasy = 'Fantasy & Magic',
+    Travel = 'Travel & Adventure',
+    Romance = 'Romance & Drama',
+    Horror = 'Thriller & Horror',
+    History = 'Historical Fiction',
+    Survival = 'Survival'
+}
+
+export interface StoryState {
+    title: string;
+    narrative: string; // The current story text
+    narrativeTranslation?: string; // Turkish translation
+    choices: string[]; // Options for the user
+    imagePrompt?: string; // For generating scene images later
+    isEnding: boolean; // Is this the end of the story?
+}
+
 export interface GameQuestion {
     id: string;
     type: GameMode;
@@ -144,6 +165,33 @@ export interface PracticeResult {
     score: number; // 0-100
 }
 
+// --- GAMIFICATION TYPES ---
+export interface Quest {
+    id: string;
+    description: string;
+    target: number;
+    progress: number;
+    isCompleted: boolean;
+    type: 'message' | 'session' | 'vocab' | 'game_points';
+    xpReward: number;
+}
+
+export interface BadgeDefinition {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    conditionType: 'totalMessages' | 'vocabularyCount' | 'sessionsCompleted' | 'storiesCompleted' | 'currentStreak' | 'totalGamePoints';
+    threshold: number;
+}
+
+export interface DailyStat {
+    date: string; // YYYY-MM-DD
+    messageCount: number;
+    wordsLearned: number;
+    minutesSpent: number; // Tahmini süre
+}
+
 export interface UserStats {
   totalMessages: number;
   totalErrorsFixed: number;
@@ -151,7 +199,21 @@ export interface UserStats {
   sessionsCompleted: number;
   practiceScoreTotal: number;
   wordsPracticed: number;
-  totalGamePoints?: number; // Added for games
+  totalGamePoints: number;
+  storiesCompleted: number;
+  
+  // Gamification
+  currentStreak: number;
+  maxStreak: number;
+  lastLoginDate: string; // YYYY-MM-DD
+  badges: string[]; // Unlocked badge IDs
+  dailyQuests: Quest[];
+  lastQuestDate: string; // YYYY-MM-DD
+  level: number;
+  currentXP: number;
+
+  // Analytics
+  dailyActivity: DailyStat[]; // NEW
 }
 
 export interface AppSettings {
@@ -206,5 +268,17 @@ export const DEFAULT_STATS: UserStats = {
   sessionsCompleted: 0,
   practiceScoreTotal: 0,
   wordsPracticed: 0,
-  totalGamePoints: 0
+  totalGamePoints: 0,
+  storiesCompleted: 0,
+  
+  currentStreak: 0,
+  maxStreak: 0,
+  lastLoginDate: '',
+  badges: [],
+  dailyQuests: [],
+  lastQuestDate: '',
+  level: 1,
+  currentXP: 0,
+  
+  dailyActivity: [] // NEW
 };

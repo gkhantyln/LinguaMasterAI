@@ -1,4 +1,6 @@
 
+import { StoryGenre, BadgeDefinition, Quest } from './types';
+
 export const SYSTEM_DEFINITION = {
   "system_name": "LinguaMaster AI",
   "role": "World-Class Language Tutor",
@@ -76,4 +78,43 @@ export const VOICE_OPTIONS = [
   { id: 'Fenrir', label: 'Fenrir - Erkek (Tok & Profesyonel)', gender: 'Male' },
   { id: 'Kore', label: 'Kore - Kadın (Sakin & Yatıştırıcı)', gender: 'Female' },
   { id: 'Aoede', label: 'Aoede - Kadın (Klasik & Dengeli)', gender: 'Female' },
+];
+
+export const STORY_GENRE_OPTIONS = [
+    { id: StoryGenre.Mystery, label: "Gizem & Dedektif", icon: "Search" },
+    { id: StoryGenre.SciFi, label: "Bilim Kurgu", icon: "Rocket" },
+    { id: StoryGenre.Fantasy, label: "Fantastik & Büyü", icon: "Wand" },
+    { id: StoryGenre.Travel, label: "Macera & Seyahat", icon: "Map" },
+    { id: StoryGenre.Survival, label: "Hayatta Kalma", icon: "Tent" },
+    { id: StoryGenre.Romance, label: "Romantik Drama", icon: "Heart" },
+    { id: StoryGenre.Horror, label: "Gerilim & Korku", icon: "Ghost" },
+    { id: StoryGenre.History, label: "Tarihi Kurgu", icon: "Scroll" }
+];
+
+// --- GAMIFICATION CONSTANTS ---
+
+export const BADGE_DEFINITIONS: BadgeDefinition[] = [
+    { id: 'first_hello', name: 'Merhaba!', description: 'İlk mesajını gönder.', icon: 'Hand', conditionType: 'totalMessages', threshold: 1 },
+    { id: 'chatterbox_bronze', name: 'Çaylak Konuşmacı', description: '25 mesaj gönder.', icon: 'MessageSquare', conditionType: 'totalMessages', threshold: 25 },
+    { id: 'chatterbox_gold', name: 'Usta Hatip', description: '100 mesaj gönder.', icon: 'MessageCircle', conditionType: 'totalMessages', threshold: 100 },
+    
+    { id: 'vocab_hunter', name: 'Kelime Avcısı', description: '20 kelime kaydet.', icon: 'Book', conditionType: 'vocabularyCount', threshold: 20 },
+    { id: 'vocab_master', name: 'Sözlük Gibi', description: '100 kelime kaydet.', icon: 'Library', conditionType: 'vocabularyCount', threshold: 100 },
+    
+    { id: 'session_starter', name: 'Ders Başı', description: 'İlk oturumu tamamla.', icon: 'PlayCircle', conditionType: 'sessionsCompleted', threshold: 1 },
+    { id: 'dedicated_student', name: 'Azimli Öğrenci', description: '10 oturum tamamla.', icon: 'GraduationCap', conditionType: 'sessionsCompleted', threshold: 10 },
+    
+    { id: 'story_traveler', name: 'Hayalperest', description: 'İlk hikayeni bitir.', icon: 'Feather', conditionType: 'storiesCompleted', threshold: 1 },
+    
+    { id: 'streak_week', name: 'Haftalık Seri', description: '7 gün üst üste çalış.', icon: 'Flame', conditionType: 'currentStreak', threshold: 7 },
+    
+    { id: 'gamer_pro', name: 'Oyun Ustası', description: 'Oyunlarda 500 puan topla.', icon: 'Trophy', conditionType: 'totalGamePoints', threshold: 500 }
+];
+
+export const DAILY_QUEST_TEMPLATES: Omit<Quest, 'progress' | 'isCompleted'>[] = [
+    { id: 'q_msg_5', description: 'Bugün 5 mesaj gönder.', target: 5, type: 'message', xpReward: 50 },
+    { id: 'q_msg_10', description: 'Bugün 10 mesaj gönder.', target: 10, type: 'message', xpReward: 100 },
+    { id: 'q_vocab_3', description: '3 yeni kelime kaydet.', target: 3, type: 'vocab', xpReward: 50 },
+    { id: 'q_session_1', description: '1 Canlı Ders veya Hikaye tamamla.', target: 1, type: 'session', xpReward: 150 },
+    { id: 'q_game_100', description: 'Oyunlarda 100 puan topla.', target: 100, type: 'game_points', xpReward: 75 }
 ];
