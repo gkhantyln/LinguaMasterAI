@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { AppSettings, Message } from '../types';
-import { Play, Pause, AlertCircle, Bot, User, Loader2, Eye, EyeOff, Lightbulb, LightbulbOff, BookmarkPlus, Check, Hammer, Book, MessageSquareQuote, Flame, RefreshCw, X } from 'lucide-react';
+import { Play, Pause, AlertCircle, Bot, User, Loader2, Eye, EyeOff, Lightbulb, LightbulbOff, BookmarkPlus, Check, Hammer, Book, MessageSquareQuote, Flame, RefreshCw, X, Sparkles } from 'lucide-react';
 import { audioBufferToWavBlob } from '../utils/audioUtils';
 import { regenerateExampleAnswers } from '../services/geminiService';
 
@@ -139,6 +139,32 @@ const HintsDisplay: React.FC<HintsDisplayProps> = ({ initialHintsText, tutorQues
     );
 };
 
+// --- CORRECTION DISPLAY COMPONENT ---
+const CorrectionDisplay: React.FC<{ text: string }> = ({ text }) => {
+    // Expected format: "Did you mean: [Sentence]? [Explanation]"
+    // We want to highlight the correct sentence.
+    const parts = text.split("Did you mean:");
+    const content = parts.length > 1 ? parts[1] : text;
+    
+    // Split sentence and explanation if possible (looking for '?' or parentheses)
+    const [sentence, explanation] = content.split('?');
+
+    return (
+        <div className="mb-4 bg-amber-500/10 border-l-4 border-amber-500 rounded-r-lg p-3 text-sm animate-in fade-in slide-in-from-left-2 shadow-sm">
+            <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider mb-1">
+                <Sparkles size={14} className="fill-amber-400/20" /> Düzeltme Önerisi
+            </div>
+            <div className="text-white font-medium text-base">
+                "{sentence?.trim()}?"
+            </div>
+            {explanation && (
+                <div className="text-amber-200/80 text-xs mt-1 italic">
+                    {explanation.trim()}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext, settings, onSaveVocabulary }) => {
   const isUser = message.role === 'user';
@@ -217,6 +243,27 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
       }
   };
 
+  // Correction Parser Logic
+  let correctionPart: string | null = null;
+  let mainContent: string = message.text;
+
+  if (!isUser && message.text.startsWith("Did you mean:")) {
+      // Try to split at the first double newline which usually separates correction from main response
+      const splitIndex = message.text.indexOf("\n\n");
+      if (splitIndex !== -1) {
+          correctionPart = message.text.substring(0, splitIndex);
+          mainContent = message.text.substring(splitIndex + 2);
+      } else {
+          // Fallback: Just take the first line? Or maybe the whole thing is correction if short?
+          // Let's rely on the prompt's \n\n structure. If not found, maybe just regex the question.
+          const match = message.text.match(/(Did you mean:.*?\?.*?)(\n|$)/);
+          if (match) {
+              correctionPart = match[1];
+              mainContent = message.text.replace(match[0], '').trim();
+          }
+      }
+  }
+
   return (
     <div className={`flex w-full mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex max-w-[85%] md:max-w-[70%] gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -242,14 +289,19 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, audioContext,
                  <span>{message.text}</span>
                </div>
              ) : (
-               <ReactMarkdown 
-                className="prose prose-invert prose-sm max-w-none"
-                components={{
-                  p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
-                }}
-               >
-                 {message.text}
-               </ReactMarkdown>
+               <>
+                 {/* CORRECTION DISPLAY */}
+                 {correctionPart && <CorrectionDisplay text={correctionPart} />}
+                 
+                 <ReactMarkdown 
+                  className="prose prose-invert prose-sm max-w-none"
+                  components={{
+                    p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />
+                  }}
+                 >
+                   {mainContent}
+                 </ReactMarkdown>
+               </>
              )}
           </div>
 
