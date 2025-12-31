@@ -585,6 +585,7 @@ const App: React.FC = () => {
             isOpen={isGameArenaOpen}
             onClose={() => setIsGameArenaOpen(false)}
             vocabulary={vocabulary}
+            customWords={customWords} // Banka kelimeleri eklendi
             settings={settings}
             onUpdateStats={handleGameStatsUpdate}
           />

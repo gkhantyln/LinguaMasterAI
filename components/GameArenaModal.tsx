@@ -1,17 +1,18 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { VocabularyItem, AppSettings, GameMode, GameQuestion } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { VocabularyItem, AppSettings, GameMode, GameQuestion, CustomWord, CEFR_MAP } from '../types';
 import { generateGameContent, generateSpeechFromText } from '../services/geminiService';
 import { audioBufferToWavBlob } from '../utils/audioUtils';
 import { 
     Gamepad2, X, Check, ArrowRight, RefreshCw, Trophy, Loader2, 
-    Target, Type, Move, Star, Lightbulb, List, Mic, Volume2, Ear, Play, ArrowLeft
+    Target, Type, Move, Star, Lightbulb, List, Mic, Volume2, Ear, Play, ArrowLeft, Filter, BookOpen, FileText, GraduationCap
 } from 'lucide-react';
 
 interface GameArenaModalProps {
   isOpen: boolean;
   onClose: () => void;
   vocabulary: VocabularyItem[];
+  customWords: CustomWord[]; // Added customWords support
   settings: AppSettings;
   onUpdateStats: (points: number) => void;
 }
@@ -50,8 +51,20 @@ const playSound = (type: 'correct' | 'wrong' | 'click') => {
     }
 };
 
+const getLevelColor = (level?: string) => {
+    switch(level) {
+        case 'A1': return 'bg-green-500/20 text-green-300 border-green-500/30';
+        case 'A2': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+        case 'B1': return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+        case 'B2': return 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
+        case 'C1': return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+        case 'C2': return 'bg-rose-500/20 text-rose-300 border-rose-500/30';
+        default: return 'bg-slate-700/50 text-slate-400 border-slate-600';
+    }
+};
+
 export const GameArenaModal: React.FC<GameArenaModalProps> = ({
-  isOpen, onClose, vocabulary, settings, onUpdateStats
+  isOpen, onClose, vocabulary, customWords, settings, onUpdateStats
 }) => {
   // Steps: 'selection' -> 'mode' -> 'loading' -> 'playing' -> 'result'
   const [step, setStep] = useState<'selection' | 'mode' | 'loading' | 'playing' | 'result'>('selection');
@@ -59,6 +72,11 @@ export const GameArenaModal: React.FC<GameArenaModalProps> = ({
   const [selectedWordIds, setSelectedWordIds] = useState<Set<string>>(new Set());
   const [selectedGameMode, setSelectedGameMode] = useState<GameMode>(GameMode.Matching);
   
+  // Selection Filters
+  const [filterSource, setFilterSource] = useState<'ALL' | 'SAVED' | 'BANK'>('ALL');
+  const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const [filterLevel, setFilterLevel] = useState<string>('ALL'); // NEW LEVEL FILTER
+
   const [gameQuestions, setGameQuestions] = useState<GameQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [score, setScore] = useState(0);
@@ -94,11 +112,60 @@ export const GameArenaModal: React.FC<GameArenaModalProps> = ({
         setMatchedPairs(new Set());
         setHintRevealed(false);
         setAudioCtx(new (window.AudioContext || (window as any).webkitAudioContext)());
+        
+        // Reset filters
+        setFilterSource('ALL');
+        setFilterCategory('ALL');
+        setFilterLevel('ALL');
     }
     return () => {
         if (audioCtx) audioCtx.close();
     }
   }, [isOpen]);
+
+  // -- Data Merging Logic --
+  // We merge chat vocabulary and bank words into a single list for selection
+  const allDisplayWords = useMemo(() => {
+      const savedItems = vocabulary.map(v => ({
+          id: v.id,
+          word: v.word,
+          source: 'SAVED' as const,
+          category: 'Chat Vocabulary',
+          level: undefined // Saved words usually don't have level data unless we enrich them
+      }));
+
+      const bankItems = customWords.map(w => ({
+          id: w.id,
+          word: w.word,
+          source: 'BANK' as const,
+          category: w.category || 'Uncategorized',
+          level: w.level // Include Level
+      }));
+
+      return [...savedItems, ...bankItems];
+  }, [vocabulary, customWords]);
+
+  // -- Filter Logic --
+  const uniqueCategories = useMemo(() => {
+      const cats = new Set<string>();
+      allDisplayWords.forEach(w => {
+          // Only show categories relevant to the selected source filter
+          if (filterSource === 'ALL' || w.source === filterSource) {
+              cats.add(w.category);
+          }
+      });
+      return Array.from(cats).sort();
+  }, [allDisplayWords, filterSource]);
+
+  const filteredWords = useMemo(() => {
+      return allDisplayWords.filter(w => {
+          if (filterSource !== 'ALL' && w.source !== filterSource) return false;
+          if (filterCategory !== 'ALL' && w.category !== filterCategory) return false;
+          if (filterLevel !== 'ALL' && w.level !== filterLevel) return false; // Filter by Level
+          return true;
+      });
+  }, [allDisplayWords, filterSource, filterCategory, filterLevel]);
+
 
   if (!isOpen) return null;
 
@@ -110,9 +177,15 @@ export const GameArenaModal: React.FC<GameArenaModalProps> = ({
       setSelectedWordIds(newSet);
   };
 
-  const selectAllWords = () => {
-      const allIds = new Set(vocabulary.map(v => v.id));
-      setSelectedWordIds(allIds);
+  const selectAllFiltered = () => {
+      const newSet = new Set(selectedWordIds);
+      // Only add words that are currently visible/filtered
+      filteredWords.forEach(w => newSet.add(w.id));
+      setSelectedWordIds(newSet);
+  }
+
+  const clearSelection = () => {
+      setSelectedWordIds(new Set());
   }
 
   // -- 2. Game Generation --
@@ -126,7 +199,11 @@ export const GameArenaModal: React.FC<GameArenaModalProps> = ({
       setStep('loading');
       playSound('click');
 
-      const selectedWords = vocabulary.filter(v => selectedWordIds.has(v.id)).map(v => v.word);
+      // Filter from ALL words (saved + bank) based on IDs
+      const selectedWords = allDisplayWords
+          .filter(v => selectedWordIds.has(v.id))
+          .map(v => v.word);
+
       const questions = await generateGameContent(selectedWords, mode, settings.targetLanguage);
       
       if (questions.length > 0) {
@@ -156,8 +233,8 @@ export const GameArenaModal: React.FC<GameArenaModalProps> = ({
       playSound('click');
   };
 
-  // -- 3. Gameplay Logic --
-  
+  // -- 3. Gameplay Logic (Unchanged) --
+  // ... (Gameplay logic remains mostly the same, relying on gameQuestions)
   // A. Matching Game
   const handleMatchAttempt = (item: {id: string, text: string, type: 'word'|'trans'}) => {
       if (matchedPairs.has(item.id)) return;
@@ -662,43 +739,128 @@ export const GameArenaModal: React.FC<GameArenaModalProps> = ({
                 
                 {/* 1. SELECTION STEP */}
                 {step === 'selection' && (
-                    <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 w-full z-10 flex flex-col items-center">
+                    <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-8 w-full z-10 flex flex-col items-center">
                         <div className="text-center space-y-2">
                             <h3 className="text-3xl font-black text-white drop-shadow-lg">Kelime Seçimi</h3>
                             <p className="text-indigo-200 text-base">Oynamak istediğin kelimeleri işaretle.</p>
-                            <button onClick={selectAllWords} className="text-xs font-bold text-indigo-400 hover:text-white underline decoration-dashed">Tümünü Seç</button>
+                        </div>
+
+                        {/* --- FILTERS BAR --- */}
+                        <div className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-4 backdrop-blur-md">
+                            
+                            <div className="flex flex-wrap items-center gap-4 flex-1">
+                                {/* Source Filter */}
+                                <div className="flex items-center gap-2">
+                                    <Filter size={16} className="text-indigo-400" />
+                                    <select 
+                                        value={filterSource}
+                                        onChange={(e) => {
+                                            setFilterSource(e.target.value as any);
+                                            setFilterCategory('ALL'); // Reset category when source changes
+                                        }}
+                                        className="bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 cursor-pointer"
+                                    >
+                                        <option value="ALL" className="bg-slate-900 text-white">Tüm Kaynaklar</option>
+                                        <option value="SAVED" className="bg-slate-900 text-white">Defter (Sohbet)</option>
+                                        <option value="BANK" className="bg-slate-900 text-white">Banka (Dosya)</option>
+                                    </select>
+                                </div>
+
+                                {/* Category Filter */}
+                                <div className="flex items-center gap-2">
+                                    <List size={16} className="text-emerald-400" />
+                                    <select 
+                                        value={filterCategory}
+                                        onChange={(e) => setFilterCategory(e.target.value)}
+                                        className="bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 cursor-pointer max-w-[150px]"
+                                    >
+                                        <option value="ALL" className="bg-slate-900 text-white">Tüm Kategoriler</option>
+                                        {uniqueCategories.map(cat => (
+                                            <option key={cat} value={cat} className="bg-slate-900 text-white">{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Level Filter */}
+                                <div className="flex items-center gap-2">
+                                    <GraduationCap size={16} className="text-amber-400" />
+                                    <select 
+                                        value={filterLevel}
+                                        onChange={(e) => setFilterLevel(e.target.value)}
+                                        className="bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 cursor-pointer"
+                                    >
+                                        <option value="ALL" className="bg-slate-900 text-white">Tüm Seviyeler</option>
+                                        <option value="A1" className="bg-slate-900 text-white">A1</option>
+                                        <option value="A2" className="bg-slate-900 text-white">A2</option>
+                                        <option value="B1" className="bg-slate-900 text-white">B1</option>
+                                        <option value="B2" className="bg-slate-900 text-white">B2</option>
+                                        <option value="C1" className="bg-slate-900 text-white">C1</option>
+                                        <option value="C2" className="bg-slate-900 text-white">C2</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                                <button onClick={selectAllFiltered} className="text-xs font-bold px-3 py-1.5 rounded bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500 hover:text-white transition-colors flex-1 md:flex-none">
+                                    Seçimi İşaretle
+                                </button>
+                                <button onClick={clearSelection} className="text-xs font-bold px-3 py-1.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500 hover:text-white transition-colors flex-1 md:flex-none">
+                                    Temizle
+                                </button>
+                            </div>
                         </div>
                         
-                        {vocabulary.length === 0 ? (
+                        {filteredWords.length === 0 ? (
                             <div className="text-center p-12 bg-white/5 rounded-3xl border border-white/10 border-dashed backdrop-blur-sm w-full">
-                                <p className="text-slate-400 text-base">Henüz kelime defterinde kelime yok.</p>
+                                <p className="text-slate-400 text-base">Bu filtreye uygun kelime bulunamadı.</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full">
-                                {vocabulary.map(v => (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
+                                {filteredWords.map(v => (
                                     <button
                                         key={v.id}
                                         onClick={() => toggleWordSelection(v.id)}
-                                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${
+                                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group flex flex-col gap-1 ${
                                             selectedWordIds.has(v.id)
                                             ? 'bg-indigo-600 border-indigo-400 text-white shadow-[0_0_20px_rgba(79,70,229,0.4)] scale-105 z-10'
                                             : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-white/30'
                                         }`}
                                     >
-                                        <div className="font-bold text-sm truncate">{v.word}</div>
-                                        {selectedWordIds.has(v.id) && <div className="absolute top-1 right-1"><Check size={12}/></div>}
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="font-bold text-sm truncate pr-6">{v.word}</div>
+                                            {/* Level Badge */}
+                                            {v.level && (
+                                                <div className={`absolute top-2 right-2 px-1.5 py-0.5 rounded text-[8px] font-bold border ${getLevelColor(v.level)}`}>
+                                                    {v.level}
+                                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-1.5 opacity-60">
+                                            {v.source === 'SAVED' 
+                                                ? <BookOpen size={10} className="text-emerald-400" />
+                                                : <FileText size={10} className="text-amber-400" />
+                                            }
+                                            <div className="text-[10px] truncate uppercase tracking-wider">{v.category}</div>
+                                        </div>
+                                        
+                                        {selectedWordIds.has(v.id) && (
+                                            <div className="absolute bottom-1 right-1 bg-white rounded-full p-0.5">
+                                                <Check size={10} className="text-indigo-600 font-bold"/>
+                                            </div>
+                                        )}
                                     </button>
                                 ))}
                             </div>
                         )}
 
-                        <div className="flex justify-center pt-4">
+                        <div className="flex justify-center pt-4 border-t border-white/10 w-full">
                             <button
                                 onClick={() => setStep('mode')}
                                 disabled={selectedWordIds.size < 3}
                                 className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl font-bold text-base transition-all shadow-xl hover:shadow-emerald-500/30 hover:scale-105 active:scale-95 flex items-center gap-2"
                             >
-                                Mod Seçimine Geç <ArrowRight size={18} />
+                                Mod Seçimine Geç ({selectedWordIds.size}) <ArrowRight size={18} />
                             </button>
                         </div>
                     </div>
