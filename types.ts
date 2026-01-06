@@ -165,6 +165,16 @@ export interface PracticeResult {
     score: number; // 0-100
 }
 
+// --- SESSION HISTORY (NEW) ---
+export interface SessionRecord {
+    id: string;
+    date: number; // Timestamp
+    durationSeconds: number;
+    summary: string; // First few lines or generated summary
+    fullTranscript: string; // For context resumption
+    language: TargetLanguage;
+}
+
 // --- GAMIFICATION TYPES ---
 export interface Quest {
     id: string;

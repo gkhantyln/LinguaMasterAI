@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS, CustomWord, Quest, DailyStat } from './types';
+import { AppSettings, DEFAULT_SETTINGS, Message, VocabularyItem, UserStats, DEFAULT_STATS, CustomWord, Quest, DailyStat, SessionRecord } from './types';
 import { BADGE_DEFINITIONS, DAILY_QUEST_TEMPLATES } from './constants';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ChatMessage } from './components/ChatMessage';
@@ -30,6 +30,12 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // NEW: Sessions History State
+  const [sessions, setSessions] = useState<SessionRecord[]>(() => {
+    const saved = localStorage.getItem('lingua_sessions');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [stats, setStats] = useState<UserStats>(() => {
     const saved = localStorage.getItem('lingua_stats');
     const loadedStats = saved ? JSON.parse(saved) : DEFAULT_STATS;
@@ -52,6 +58,9 @@ const App: React.FC = () => {
   const [isGameArenaOpen, setIsGameArenaOpen] = useState(false);
   const [isStoryModeOpen, setIsStoryModeOpen] = useState(false);
   
+  // Resume Context for Live Session
+  const [liveSessionContext, setLiveSessionContext] = useState<string | undefined>(undefined);
+
   const [practiceWords, setPracticeWords] = useState<CustomWord[]>([]);
 
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -70,6 +79,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('lingua_custom_words', JSON.stringify(customWords));
   }, [customWords]);
+
+  useEffect(() => {
+    localStorage.setItem('lingua_sessions', JSON.stringify(sessions));
+  }, [sessions]);
 
   useEffect(() => {
     localStorage.setItem('lingua_stats', JSON.stringify(stats));
@@ -308,6 +321,27 @@ const App: React.FC = () => {
       updateDailyActivity({ minutesSpent: 10 }); // Approx
   };
 
+  // --- SESSION LOGIC ---
+  const handleSaveSession = (record: SessionRecord) => {
+      setSessions(prev => [record, ...prev]);
+      // Update stats
+      setStats(prev => ({...prev, sessionsCompleted: prev.sessionsCompleted + 1}));
+      updateProgress('session', 1);
+      updateDailyActivity({ minutesSpent: Math.ceil(record.durationSeconds / 60) });
+  };
+
+  const handleResumeSession = (record: SessionRecord) => {
+      setLiveSessionContext(record.fullTranscript);
+      setIsDashboardOpen(false);
+      setIsLiveSessionOpen(true);
+  };
+
+  const handleStartNewSession = () => {
+      setLiveSessionContext(undefined); // Clear context for new session
+      setIsLiveSessionOpen(true);
+  };
+
+
   const processResponse = async (input: string | { audioBase64: string, mimeType: string }) => {
      if (!process.env.API_KEY) {
         setMessages(prev => [...prev, {
@@ -424,7 +458,7 @@ const App: React.FC = () => {
              {hasApiKey && (
                  <>
                     <button 
-                        onClick={() => setIsLiveSessionOpen(true)}
+                        onClick={handleStartNewSession}
                         className="flex items-center gap-2 px-4 md:px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-500/30 transition-all font-medium text-sm border border-emerald-400/20 hover:scale-105 active:scale-95 group"
                     >
                         <Headset className="w-4 h-4 group-hover:animate-bounce" />
@@ -544,23 +578,22 @@ const App: React.FC = () => {
          isOpen={isDashboardOpen}
          onClose={() => setIsDashboardOpen(false)}
          stats={stats}
+         sessions={sessions}
          vocabulary={vocabulary}
          customWords={customWords}
          onDeleteVocab={handleDeleteVocabulary}
          onUploadWords={handleUploadWords}
          onUpdateWordList={handleUpdateWordList}
          onStartPractice={startPractice}
+         onResumeSession={handleResumeSession}
       />
 
       {isLiveSessionOpen && (
           <LiveSession 
             settings={settings}
-            onClose={() => {
-                setIsLiveSessionOpen(false);
-                setStats(prev => ({...prev, sessionsCompleted: prev.sessionsCompleted + 1}));
-                updateProgress('session', 1);
-                updateDailyActivity({ minutesSpent: 15 }); // Approx
-            }}
+            initialContext={liveSessionContext}
+            onClose={() => setIsLiveSessionOpen(false)}
+            onSaveSession={handleSaveSession}
             onSaveVocabulary={handleSaveVocabulary}
             onOpenGameArena={() => {
                 setIsLiveSessionOpen(false);
