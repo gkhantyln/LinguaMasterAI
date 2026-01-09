@@ -80,6 +80,17 @@ export const VOICE_OPTIONS = [
   { id: 'Aoede', label: 'Aoede - Kadın (Klasik & Dengeli)', gender: 'Female' },
 ];
 
+export const AVAILABLE_TEXT_MODELS = [
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Tavsiye Edilen)', limit: 'Yüksek Hız, Düşük Maliyet', desc: 'Genel sohbet için en dengeli model.' },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', limit: '2 RPM / 32k TPM', desc: 'Daha karmaşık mantık ve dil bilgisi.' },
+    { id: 'gemini-2.0-flash-lite-preview', name: 'Gemini 2.0 Flash Lite', limit: 'Çok Yüksek Hız', desc: 'En hızlı ve hafif model.' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Legacy)', limit: 'Standart', desc: 'Kararlı sürüm.' }
+];
+
+export const AVAILABLE_AUDIO_MODELS = [
+    { id: 'gemini-2.5-flash-native-audio-preview-12-2025', name: 'Gemini 2.5 Flash Audio', limit: 'Audio Optimize', desc: 'Düşük gecikmeli sesli konuşma için optimize edilmiş.' },
+];
+
 export const STORY_GENRE_OPTIONS = [
     { id: StoryGenre.Mystery, label: "Gizem & Dedektif", icon: "Search" },
     { id: StoryGenre.SciFi, label: "Bilim Kurgu", icon: "Rocket" },

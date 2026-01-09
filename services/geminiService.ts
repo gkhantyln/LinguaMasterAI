@@ -4,39 +4,104 @@ import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion, StoryG
 import { SYSTEM_DEFINITION } from "../constants";
 import { decodeBase64, decodeAudioData } from "../utils/audioUtils";
 
-const API_KEY = process.env.API_KEY;
+const DEFAULT_API_KEY = process.env.API_KEY;
 
-if (!API_KEY) {
-  console.error("API_KEY ortam değişkenlerinde eksik.");
+// --- KEY MANAGER ---
+// Manages rotation and fallback of API keys
+class KeyManager {
+    private currentIndex = 0;
+
+    getKey(settings: AppSettings): string {
+        const userKeys = settings.apiKeys || [];
+        const allKeys = [...userKeys];
+        
+        // Add default key if available and not already in list (optional, but good for fallback)
+        if (DEFAULT_API_KEY && !allKeys.includes(DEFAULT_API_KEY)) {
+            allKeys.push(DEFAULT_API_KEY);
+        }
+
+        if (allKeys.length === 0) {
+            console.warn("No API Keys available.");
+            return '';
+        }
+
+        // Ensure index is valid
+        if (this.currentIndex >= allKeys.length) {
+            this.currentIndex = 0;
+        }
+
+        return allKeys[this.currentIndex];
+    }
+
+    rotateKey(settings: AppSettings): string {
+        const userKeys = settings.apiKeys || [];
+        const allKeys = [...userKeys];
+        if (DEFAULT_API_KEY && !allKeys.includes(DEFAULT_API_KEY)) {
+            allKeys.push(DEFAULT_API_KEY);
+        }
+
+        if (allKeys.length <= 1) return this.getKey(settings); // No other keys to rotate to
+
+        this.currentIndex = (this.currentIndex + 1) % allKeys.length;
+        console.log(`Switched to API Key index: ${this.currentIndex}`);
+        return allKeys[this.currentIndex];
+    }
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY || '' });
+const keyManager = new KeyManager();
+
+// Helper to get client with current active key
+const getAIClient = (settings: AppSettings) => {
+    const key = keyManager.getKey(settings);
+    return new GoogleGenAI({ apiKey: key });
+};
+
+// Retry wrapper for API calls
+async function withRetry<T>(
+    operation: (ai: GoogleGenAI) => Promise<T>,
+    settings: AppSettings
+): Promise<T> {
+    const maxRetries = (settings.apiKeys?.length || 0) + 1; // Try once for each key available (roughly)
+    let lastError: any;
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const ai = getAIClient(settings);
+            return await operation(ai);
+        } catch (error: any) {
+            lastError = error;
+            // Check for quota/rate limit errors or 429
+            if (error.status === 429 || error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('resource exhausted')) {
+                console.warn(`API Key limit reached (Attempt ${i + 1}). Rotating key...`);
+                keyManager.rotateKey(settings);
+                continue; 
+            }
+            // For other errors, throw immediately or retry? Let's throw for non-auth errors
+            throw error;
+        }
+    }
+    throw lastError;
+}
 
 let history: Content[] = [];
-
-// Story History needs to be separate or managed within the component
 let storyHistory: Content[] = [];
-
-// Pattern Practice History
 let patternPracticeHistory: Content[] = [];
 
-export const resetHistory = () => {
-  history = [];
-};
+export const resetHistory = () => { history = []; };
+export const resetStoryHistory = () => { storyHistory = []; };
+export const resetPatternHistory = () => { patternPracticeHistory = []; };
 
-export const resetStoryHistory = () => {
-    storyHistory = [];
+// --- GET ACTIVE KEY EXPORT ---
+// Used by LiveSession to initialize connection
+export const getActiveApiKey = (settings: AppSettings): string => {
+    return keyManager.getKey(settings);
 };
-
-export const resetPatternHistory = () => {
-    patternPracticeHistory = [];
-}
 
 export const sendMessageToGemini = async (
   input: string | { audioBase64: string, mimeType: string },
   settings: AppSettings
 ): Promise<{ text: string, translation?: string, hints?: string }> => {
-  try {
+  return withRetry(async (ai) => {
     const personaInstruction = SYSTEM_DEFINITION.personas[settings.tutorPersona];
     const styleInstruction = SYSTEM_DEFINITION.speaking_styles[settings.speakingStyle];
     
@@ -95,20 +160,19 @@ REMEMBER THE 3-PART FORMAT for the final output:
 [Correction if needed] [Main Response] ||| Translation (in ${settings.nativeLanguage}) ||| Hints (explained in ${settings.nativeLanguage})
 `;
 
-    const modelId = "gemini-3-flash-preview";
+    // USE SELECTED MODEL FROM SETTINGS
+    const modelId = settings.textModel || "gemini-3-flash-preview";
 
     const config: any = {
       systemInstruction: systemInstruction,
       temperature: settings.lessonMode === LessonMode.Drill ? 0.4 : 0.8, 
     };
 
-    // Prepare User Content
     let userContentParts: any[] = [];
 
     if (typeof input === 'string') {
         userContentParts.push({ text: input });
     } else {
-        // Audio Input
         userContentParts.push({
             inlineData: {
                 mimeType: input.mimeType,
@@ -128,14 +192,11 @@ REMEMBER THE 3-PART FORMAT for the final output:
 
     const rawText = response.text || "I apologize, I could not generate a response.";
 
-    // Parse Text, Translation and Hints
     const parts = rawText.split('|||');
     const mainText = parts[0].trim();
     const translationText = parts.length > 1 ? parts[1].trim() : undefined;
     const hintsText = parts.length > 2 ? parts[2].trim() : undefined;
 
-    // History'ye sadece ana metni veya raw hali ekleyebiliriz.
-    // Modelin kafası karışmasın diye raw halini (separatorlü) ekliyoruz ki formatı unutmamasın.
     history.push({ role: 'model', parts: [{ text: rawText }] });
 
     return {
@@ -143,20 +204,16 @@ REMEMBER THE 3-PART FORMAT for the final output:
         translation: translationText,
         hints: hintsText
     };
-
-  } catch (error) {
-    console.error("Content generation error:", error);
-    throw error;
-  }
+  }, settings);
 };
 
 // --- NEW: Generate Daily Patterns ---
 export const generateDailyPatterns = async (
     settings: AppSettings
 ): Promise<DailyPattern[]> => {
-    try {
+    return withRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: settings.textModel || "gemini-3-flash-preview",
             contents: `
             Task: Generate 5 useful, common sentence patterns or idioms for a language learner.
             Target Language: ${settings.targetLanguage}
@@ -186,10 +243,7 @@ export const generateDailyPatterns = async (
         const jsonStr = response.text || "[]";
         const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanJson);
-    } catch (error) {
-        console.error("Pattern generation failed", error);
-        return [];
-    }
+    }, settings);
 };
 
 // --- UPDATED: Send Message to Pattern Practice ---
@@ -199,7 +253,7 @@ export const sendMessageToPatternPractice = async (
     settings: AppSettings,
     isStart: boolean = false
 ): Promise<{ text: string, translation?: string, hints?: string }> => {
-    try {
+    return withRetry(async (ai) => {
         if (isStart) patternPracticeHistory = [];
 
         const prompt = isStart ? `
@@ -229,7 +283,7 @@ export const sendMessageToPatternPractice = async (
         patternPracticeHistory.push({ role: 'user', parts: [{ text: prompt }] });
 
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: settings.textModel || "gemini-3-flash-preview",
             contents: patternPracticeHistory
         });
 
@@ -242,20 +296,16 @@ export const sendMessageToPatternPractice = async (
             translation: parts.length > 1 ? parts[1].trim() : undefined,
             hints: parts.length > 2 ? parts[2].trim() : undefined
         };
-
-    } catch (error) {
-        console.error("Pattern practice error", error);
-        return { text: "Bağlantı hatası." };
-    }
+    }, settings);
 };
 
 export const regenerateExampleAnswers = async (
     tutorQuestion: string,
     settings: AppSettings
 ): Promise<string> => {
-    try {
+    return withRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: settings.textModel || "gemini-3-flash-preview",
             contents: `
             CONTEXT: The language tutor asked the student: "${tutorQuestion}"
             TARGET LANGUAGE: ${settings.targetLanguage}
@@ -274,19 +324,16 @@ export const regenerateExampleAnswers = async (
             5. (Slang) [Sentence] ([Native Lang Translation])
             `
         });
-        
         return response.text || "";
-    } catch (error) {
-        console.error("Regenerate examples error:", error);
-        return "";
-    }
+    }, settings);
 };
 
-// --- NEW: Categorize Words Batch ---
 export const categorizeWordsBatch = async (
     words: string[],
     targetLanguage: string
 ): Promise<Record<string, string>> => {
+    // This is a utility function, we can default to flash
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -318,11 +365,12 @@ export const categorizeWordsBatch = async (
     }
 };
 
-// --- NEW: Get Word Details (Translation + Definition) ---
 export const getWordDetails = async (
     word: string,
     targetLanguage: string
 ): Promise<{ translation: string, definition: string }> => {
+    // Utility, use default key if possible or passed settings (simplified here)
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -352,12 +400,12 @@ export const getWordDetails = async (
     }
 };
 
-// --- NEW FUNCTION: Evaluate Vocabulary Practice ---
 export const evaluateVocabularyPractice = async (
     targetWord: string,
     userSentence: string,
     targetLanguage: string
 ): Promise<PracticeResult> => {
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -388,7 +436,6 @@ export const evaluateVocabularyPractice = async (
         });
 
         const jsonStr = response.text || "{}";
-        // Clean markdown code blocks if present
         const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanJson);
 
@@ -402,19 +449,17 @@ export const evaluateVocabularyPractice = async (
     }
 };
 
-// --- STORY MODE GENERATION ---
 export const generateInteractiveStory = async (
     genre: StoryGenre,
     settings: AppSettings,
     userChoice: string | null = null,
     isStart: boolean = true
 ): Promise<StoryState> => {
-    try {
+    return withRetry(async (ai) => {
         const level = settings.proficiencyLevel;
         const targetLang = settings.targetLanguage;
         const nativeLang = settings.nativeLanguage;
 
-        // Push User Choice to history if continuing
         if (!isStart && userChoice) {
             storyHistory.push({
                 role: 'user',
@@ -458,19 +503,12 @@ export const generateInteractiveStory = async (
             }
         `;
 
-        // If starting, clear history
         if (isStart) storyHistory = [];
 
-        // Add prompt to history (conceptually, though for gemini-api we usually send the whole history)
-        // Here we just send the new prompt with context if we want to be stateless, 
-        // BUT for a story we need context.
-        
-        // Actually, for GenerateContent with history, we construct the array.
-        // Let's create a temporary history array including the system prompt for this specific turn
         const currentTurnContents = [...storyHistory, { role: 'user', parts: [{ text: prompt }] }];
 
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: settings.textModel || "gemini-3-flash-preview",
             contents: currentTurnContents,
             config: {
                 responseMimeType: "application/json"
@@ -481,40 +519,27 @@ export const generateInteractiveStory = async (
         const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
         const result: StoryState = JSON.parse(cleanJson);
 
-        // Append Model Response to History so next turn remembers
-        storyHistory.push({ role: 'user', parts: [{ text: prompt }] }); // We store the prompt we sent as user 'intent' or just the raw prompt
-        // Better: Push the actual interaction. 
-        // If isStart:
+        storyHistory.push({ role: 'user', parts: [{ text: prompt }] }); 
         if (isStart) {
              storyHistory = [
                  { role: 'user', parts: [{ text: `Start a ${genre} story in ${targetLang}.` }] },
                  { role: 'model', parts: [{ text: result.narrative }] }
              ];
         } else {
-             // We already pushed user choice above. Now push model narrative.
              storyHistory.push({ role: 'model', parts: [{ text: result.narrative }] });
         }
 
         return result;
-
-    } catch (error) {
-        console.error("Story generation failed", error);
-        return {
-            title: "Error",
-            narrative: "Something went wrong generating the story. Please try again.",
-            choices: [],
-            isEnding: true
-        };
-    }
+    }, settings);
 };
 
-
-// --- GAME CONTENT GENERATION ---
 export const generateGameContent = async (
     words: string[],
     mode: GameMode,
     targetLanguage: string
 ): Promise<GameQuestion[]> => {
+    // Utility, fallback to default key/model for stability
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         let prompt = "";
         
@@ -665,7 +690,7 @@ export const generateSpeechFromText = async (
   audioContext: AudioContext,
   isTranslation: boolean = false
 ): Promise<AudioBuffer | null> => {
-  try {
+  return withRetry(async (ai) => {
     const selectedVoice = isTranslation ? 'Puck' : (settings.voiceName || 'Puck');
 
     const response = await ai.models.generateContent({
@@ -692,17 +717,15 @@ export const generateSpeechFromText = async (
     const audioBuffer = await decodeAudioData(audioBytes, audioContext);
     
     return audioBuffer;
-
-  } catch (error) {
-    console.error("Speech generation error:", error);
-    return null;
-  }
+  }, settings);
 };
 
 export const getTranslationForLive = async (
     originalText: string,
     audioContext: AudioContext
 ): Promise<AudioBuffer | null> => {
+    // Use default client for simple translation
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         const textResponse = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -738,6 +761,7 @@ export const getTranslationForLive = async (
 export const getTextTranslationForLive = async (
     originalText: string
 ): Promise<string> => {
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         const textResponse = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -754,6 +778,7 @@ export const getHintsForLive = async (
     originalText: string,
     targetLanguage: string
 ): Promise<string> => {
+    const ai = new GoogleGenAI({ apiKey: DEFAULT_API_KEY || '' });
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",

@@ -4,7 +4,7 @@ import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { AppSettings, SpeakingStyle, SessionRecord } from '../types';
 import { Mic, MicOff, Globe, Eye, Lightbulb, X, Sparkles, Activity, Power, Ear, Move, Gamepad2, BookmarkPlus, Check, MessageCircle } from 'lucide-react';
 import { decodeAudioData } from '../utils/audioUtils';
-import { getTextTranslationForLive, getHintsForLive } from '../services/geminiService';
+import { getTextTranslationForLive, getHintsForLive, getActiveApiKey } from '../services/geminiService';
 
 interface LiveSessionProps {
   settings: AppSettings;
@@ -241,13 +241,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
   const accumulatedTranscriptRef = useRef<string>(initialContext || "");
   const currentTurnTranscriptRef = useRef(""); // Model's current turn
 
-  const API_KEY = process.env.API_KEY;
-
   useEffect(() => {
-    if (!API_KEY) {
-      setStatus('error');
-      return;
-    }
+    // Basic check if *any* key is available happens inside getActiveApiKey, but for initial mount we can rely on startSession
     startSession();
     return () => {
       mountedRef.current = false;
@@ -328,6 +323,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
 
   const startSession = async () => {
     try {
+      const activeKey = getActiveApiKey(settings);
+      if (!activeKey) {
+          console.error("No active API key found for Live Session");
+          setStatus('error');
+          return;
+      }
+
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       inputContextRef.current = inputCtx;
@@ -343,7 +345,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
 
-      const ai = new GoogleGenAI({ apiKey: API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: activeKey });
       
       let voiceName = 'Aoede'; 
       if (settings.tutorPersona === 'strict_professor') voiceName = 'Fenrir';
@@ -389,6 +391,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
       Keep responses relatively short (2-3 sentences max) to allow turn-taking.
       `;
 
+      // Use the selected audio model from settings, or fallback to default
+      const modelId = settings.audioModel || 'gemini-2.5-flash-native-audio-preview-12-2025';
+
       const config = {
         responseModalities: [Modality.AUDIO],
         inputAudioTranscription: {}, // Transcription enabled with default model
@@ -400,7 +405,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
       };
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: modelId,
         config: config as any,
         callbacks: {
           onopen: () => {

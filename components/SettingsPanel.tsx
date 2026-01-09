@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
 import { AppSettings, TargetLanguage, ProficiencyLevel, TutorPersona, LessonMode, NativeLanguage, EnglishDialect, SpeakingStyle } from '../types';
-import { SUGGESTED_TOPICS, ROLEPLAY_SCENARIOS, VOICE_OPTIONS } from '../constants';
-import { Settings, GraduationCap, User, Globe, MessageCircle, Volume2, Mic2, Layout, Sliders, BookOpen, Music, Theater, Mic, Languages } from 'lucide-react';
+import { SUGGESTED_TOPICS, ROLEPLAY_SCENARIOS, VOICE_OPTIONS, AVAILABLE_TEXT_MODELS, AVAILABLE_AUDIO_MODELS } from '../constants';
+import { Settings, GraduationCap, User, Globe, MessageCircle, Volume2, Mic2, Layout, Sliders, BookOpen, Music, Theater, Mic, Languages, Cloud, Key, Plus, Trash2, Cpu, Activity } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: AppSettings;
@@ -17,10 +17,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   isOpen,
   onToggle,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'audio' | 'topics'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'audio' | 'topics' | 'api'>('general');
+  const [newApiKey, setNewApiKey] = useState('');
 
   const handleChange = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     onSettingsChange({ ...settings, [key]: value });
+  };
+
+  const handleAddKey = () => {
+      if (newApiKey.trim().length > 10) {
+          const currentKeys = settings.apiKeys || [];
+          if (!currentKeys.includes(newApiKey.trim())) {
+              handleChange('apiKeys', [...currentKeys, newApiKey.trim()]);
+              setNewApiKey('');
+          }
+      }
+  };
+
+  const handleRemoveKey = (keyToRemove: string) => {
+      const currentKeys = settings.apiKeys || [];
+      handleChange('apiKeys', currentKeys.filter(k => k !== keyToRemove));
   };
 
   if (!isOpen) {
@@ -47,24 +63,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
       {/* TABS */}
-      <div className="flex border-b border-slate-800">
+      <div className="flex border-b border-slate-800 overflow-x-auto">
           <button 
             onClick={() => setActiveTab('general')}
-            className={`flex-1 py-3 text-xs font-medium flex justify-center items-center gap-1 ${activeTab === 'general' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 py-3 px-2 text-xs font-medium flex justify-center items-center gap-1 min-w-[70px] ${activeTab === 'general' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
           >
              <Layout size={14} /> Genel
           </button>
           <button 
             onClick={() => setActiveTab('topics')}
-            className={`flex-1 py-3 text-xs font-medium flex justify-center items-center gap-1 ${activeTab === 'topics' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 py-3 px-2 text-xs font-medium flex justify-center items-center gap-1 min-w-[70px] ${activeTab === 'topics' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
           >
-             <MessageCircle size={14} /> {settings.lessonMode === LessonMode.Roleplay ? 'Senaryolar' : 'Konular'}
+             <MessageCircle size={14} /> {settings.lessonMode === LessonMode.Roleplay ? 'Senaryo' : 'Konular'}
           </button>
           <button 
             onClick={() => setActiveTab('audio')}
-            className={`flex-1 py-3 text-xs font-medium flex justify-center items-center gap-1 ${activeTab === 'audio' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`flex-1 py-3 px-2 text-xs font-medium flex justify-center items-center gap-1 min-w-[70px] ${activeTab === 'audio' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
           >
              <Sliders size={14} /> Ses
+          </button>
+          <button 
+            onClick={() => setActiveTab('api')}
+            className={`flex-1 py-3 px-2 text-xs font-medium flex justify-center items-center gap-1 min-w-[70px] ${activeTab === 'api' ? 'text-emerald-400 border-b-2 border-emerald-500 bg-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+             <Cloud size={14} /> API
           </button>
       </div>
 
@@ -341,6 +363,106 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                          <span>Hızlı</span>
                      </div>
                 </div>
+            </div>
+        )}
+
+        {/* --- API & CLOUD TAB (NEW) --- */}
+        {activeTab === 'api' && (
+            <div className="space-y-8 animate-in fade-in">
+                
+                {/* 1. API KEY MANAGEMENT */}
+                <div className="space-y-4">
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                        <Key className="w-3 h-3" /> Çoklu API Anahtarı
+                    </label>
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col gap-3">
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="password" 
+                                value={newApiKey}
+                                onChange={(e) => setNewApiKey(e.target.value)}
+                                placeholder="Yeni Gemini API Key ekle..."
+                                className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 outline-none"
+                            />
+                            <button onClick={handleAddKey} disabled={!newApiKey} className="p-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 rounded-lg text-white transition-colors">
+                                <Plus size={18} />
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-2 max-h-[120px] overflow-y-auto custom-scrollbar">
+                            {(settings.apiKeys || []).length === 0 ? (
+                                <p className="text-xs text-slate-500 italic text-center py-2">Ekli anahtar yok. Varsayılan (Env) anahtar kullanılacak.</p>
+                            ) : (
+                                (settings.apiKeys || []).map((key, idx) => (
+                                    <div key={idx} className="flex items-center justify-between bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700">
+                                        <span className="text-xs font-mono text-slate-300">...{key.slice(-6)}</span>
+                                        <button onClick={() => handleRemoveKey(key)} className="text-slate-500 hover:text-red-400">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <p className="text-[10px] text-slate-500">Anahtarlar limit aşımında otomatik olarak sırayla kullanılır.</p>
+                    </div>
+                </div>
+
+                {/* 2. TEXT MODEL SELECTION */}
+                <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                        <Cpu className="w-3 h-3" /> Yazı & Sohbet Modeli
+                    </label>
+                    <div className="space-y-2">
+                        {AVAILABLE_TEXT_MODELS.map((model) => (
+                            <button
+                                key={model.id}
+                                onClick={() => handleChange('textModel', model.id)}
+                                className={`w-full flex flex-col items-start px-4 py-3 rounded-lg border text-sm transition-all ${
+                                    settings.textModel === model.id
+                                    ? 'bg-blue-900/30 border-blue-500 text-blue-100 shadow-lg' 
+                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                                }`}
+                            >
+                                <div className="flex justify-between w-full mb-1">
+                                    <span className="font-bold">{model.name}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-slate-950 rounded border border-slate-700 text-slate-400 flex items-center gap-1">
+                                        <Activity size={10} /> {model.limit}
+                                    </span>
+                                </div>
+                                <span className="text-xs opacity-70">{model.desc}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 3. AUDIO MODEL SELECTION */}
+                <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-2">
+                        <Cloud className="w-3 h-3" /> Canlı Ses Modeli (Live)
+                    </label>
+                    <div className="space-y-2">
+                        {AVAILABLE_AUDIO_MODELS.map((model) => (
+                            <button
+                                key={model.id}
+                                onClick={() => handleChange('audioModel', model.id)}
+                                className={`w-full flex flex-col items-start px-4 py-3 rounded-lg border text-sm transition-all ${
+                                    settings.audioModel === model.id
+                                    ? 'bg-pink-900/30 border-pink-500 text-pink-100 shadow-lg' 
+                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
+                                }`}
+                            >
+                                <div className="flex justify-between w-full mb-1">
+                                    <span className="font-bold">{model.name}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-slate-950 rounded border border-slate-700 text-slate-400 flex items-center gap-1">
+                                        <Activity size={10} /> {model.limit}
+                                    </span>
+                                </div>
+                                <span className="text-xs opacity-70">{model.desc}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
             </div>
         )}
 

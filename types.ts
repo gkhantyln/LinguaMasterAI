@@ -253,6 +253,11 @@ export interface AppSettings {
   visualizerStyle: VisualizerStyle;
   
   voiceName: string; // Seçilen sesin adı (Puck, Kore, vb.)
+
+  // API & Models
+  apiKeys: string[]; // User added keys
+  textModel: string; // Selected Gemini Model ID for Chat
+  audioModel: string; // Selected Gemini Model ID for Live/TTS
 }
 
 export interface Message {
@@ -280,6 +285,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   speechSpeed: 1.0,
   visualizerStyle: VisualizerStyle.Orb,
   voiceName: 'Puck',
+  
+  apiKeys: [],
+  textModel: 'gemini-3-flash-preview',
+  audioModel: 'gemini-2.5-flash-native-audio-preview-12-2025'
 };
 
 export const DEFAULT_STATS: UserStats = {
