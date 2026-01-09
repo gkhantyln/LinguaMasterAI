@@ -175,6 +175,17 @@ export interface SessionRecord {
     language: TargetLanguage;
 }
 
+// --- SENTENCE PATTERNS (NEW) ---
+export interface DailyPattern {
+    id: string;
+    pattern: string; // e.g. "I'm thinking of + V-ing"
+    meaning: string; // e.g. "...yapmayı düşünüyorum"
+    explanation: string; // Short usage explanation
+    exampleSentence: string;
+    exampleTranslation: string;
+    level: string; // A1, B1 etc.
+}
+
 // --- GAMIFICATION TYPES ---
 export interface Quest {
     id: string;

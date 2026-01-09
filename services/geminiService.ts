@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Content, Type } from "@google/genai";
-import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion, StoryGenre, StoryState } from "../types";
+import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion, StoryGenre, StoryState, DailyPattern } from "../types";
 import { SYSTEM_DEFINITION } from "../constants";
 import { decodeBase64, decodeAudioData } from "../utils/audioUtils";
 
@@ -17,6 +17,9 @@ let history: Content[] = [];
 // Story History needs to be separate or managed within the component
 let storyHistory: Content[] = [];
 
+// Pattern Practice History
+let patternPracticeHistory: Content[] = [];
+
 export const resetHistory = () => {
   history = [];
 };
@@ -24,6 +27,10 @@ export const resetHistory = () => {
 export const resetStoryHistory = () => {
     storyHistory = [];
 };
+
+export const resetPatternHistory = () => {
+    patternPracticeHistory = [];
+}
 
 export const sendMessageToGemini = async (
   input: string | { audioBase64: string, mimeType: string },
@@ -141,6 +148,105 @@ REMEMBER THE 3-PART FORMAT for the final output:
     console.error("Content generation error:", error);
     throw error;
   }
+};
+
+// --- NEW: Generate Daily Patterns ---
+export const generateDailyPatterns = async (
+    settings: AppSettings
+): Promise<DailyPattern[]> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `
+            Task: Generate 5 useful, common sentence patterns or idioms for a language learner.
+            Target Language: ${settings.targetLanguage}
+            Learner Level: ${settings.proficiencyLevel}
+            Native Language: ${settings.nativeLanguage} (for meanings/explanations)
+            
+            Focus on patterns that are very common in daily conversation but might be tricky for learners.
+            
+            Output JSON Array Format:
+            [
+              {
+                "id": "1",
+                "pattern": "I'm thinking of + V-ing",
+                "meaning": "...yapmayı düşünüyorum",
+                "explanation": "Used when considering a future action but not 100% decided.",
+                "exampleSentence": "I'm thinking of moving to a new city.",
+                "exampleTranslation": "Yeni bir şehre taşınmayı düşünüyorum.",
+                "level": "A2"
+              }
+            ]
+            `,
+            config: {
+                responseMimeType: "application/json"
+            }
+        });
+
+        const jsonStr = response.text || "[]";
+        const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
+    } catch (error) {
+        console.error("Pattern generation failed", error);
+        return [];
+    }
+};
+
+// --- UPDATED: Send Message to Pattern Practice ---
+export const sendMessageToPatternPractice = async (
+    userMessage: string,
+    targetPattern: DailyPattern,
+    settings: AppSettings,
+    isStart: boolean = false
+): Promise<{ text: string, translation?: string, hints?: string }> => {
+    try {
+        if (isStart) patternPracticeHistory = [];
+
+        const prompt = isStart ? `
+            ROLE: Language Practice Partner.
+            TASK: Help the user practice the specific sentence pattern: "${targetPattern.pattern}".
+            TARGET LANGUAGE: ${settings.targetLanguage}.
+            NATIVE LANGUAGE: ${settings.nativeLanguage}.
+            USER LEVEL: ${settings.proficiencyLevel}.
+            
+            CONTEXT: The user wants to learn how to use this pattern in a real dialogue.
+            
+            INSTRUCTIONS:
+            1. Start by asking a question that forces the user to use the pattern "${targetPattern.pattern}" in their answer.
+            2. Be friendly and encouraging.
+            3. If the user answers using the pattern correctly, praise them and ask a follow-up question using the same or related pattern.
+            4. If the user answers INCORRECTLY (grammar or pattern usage), gently correct them (start with "Did you mean: ...") and ask them to try again.
+            
+            Keep responses short (1-2 sentences).
+
+            IMPORTANT OUTPUT FORMAT:
+            Use '|||' to separate the Main Response, Native Translation, and Hints.
+            
+            Example:
+            Great use of the pattern! What else are you thinking of doing? ||| Harika kullandın! Başka ne yapmayı düşünüyorsun? ||| **Structure:** [Explanation]...
+        ` : userMessage;
+
+        patternPracticeHistory.push({ role: 'user', parts: [{ text: prompt }] });
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: patternPracticeHistory
+        });
+
+        const rawText = response.text || "";
+        patternPracticeHistory.push({ role: 'model', parts: [{ text: rawText }] });
+        
+        const parts = rawText.split('|||');
+        return {
+            text: parts[0].trim(),
+            translation: parts.length > 1 ? parts[1].trim() : undefined,
+            hints: parts.length > 2 ? parts[2].trim() : undefined
+        };
+
+    } catch (error) {
+        console.error("Pattern practice error", error);
+        return { text: "Bağlantı hatası." };
+    }
 };
 
 export const regenerateExampleAnswers = async (
@@ -651,24 +757,31 @@ export const getHintsForLive = async (
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: `The tutor just said: "${originalText}" in ${targetLanguage}.
+            contents: `
+            Analyze the following sentence spoken by a language tutor:
+            "${originalText}"
+
+            Is it a question or something that requires a response from the student?
+            Target Language: ${targetLanguage}
+
+            Task:
+            1. If it's a question, provide 3 SPECIFIC and NATURAL suggested replies for the student in ${targetLanguage}.
+            2. If it's not a question (just a statement), provide 3 relevant follow-up comments or questions the student could ask.
             
-            Provide helpful hints for the student to reply.
-            YOU MUST USE THIS FORMAT EXACTLY:
+            IMPORTANT:
+            - Include the Turkish translation for each suggestion in parentheses.
+            - Format as a numbered list.
+            - Do not include "Structure" or "Vocabulary" sections, just the conversational suggestions.
             
-            **Structure:** [Grammar Formula] ([TR Explanation])
-            **Vocabulary:** [Word] ([TR]), [Word] ([TR])
-            **Examples:**
-            1. (Positive) [Sentence] ([TR Translation])
-            2. (Negative) [Sentence] ([TR Translation])
-            3. (Question) [Sentence] ([TR Translation])
-            4. (Formal) [Sentence] ([TR Translation])
-            5. (Slang) [Sentence] ([TR Translation])
+            Example Format:
+            1. [Suggested Reply in ${targetLanguage}] ([Turkish Translation])
+            2. [Suggested Reply in ${targetLanguage}] ([Turkish Translation])
+            3. [Suggested Reply in ${targetLanguage}] ([Turkish Translation])
             `
         });
-        return response.text || "İpucu oluşturulamadı.";
+        return response.text || "Öneri oluşturulamadı.";
     } catch (e) {
         console.error("Hints generation failed", e);
-        return "Bağlantı hatası nedeniyle ipucu alınamadı.";
+        return "Bağlantı hatası nedeniyle öneri alınamadı.";
     }
 };

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { AppSettings, SpeakingStyle, SessionRecord } from '../types';
-import { Mic, MicOff, Globe, Eye, Lightbulb, X, Sparkles, Activity, Power, Ear, Move, Gamepad2, BookmarkPlus, Check } from 'lucide-react';
+import { Mic, MicOff, Globe, Eye, Lightbulb, X, Sparkles, Activity, Power, Ear, Move, Gamepad2, BookmarkPlus, Check, MessageCircle } from 'lucide-react';
 import { decodeAudioData } from '../utils/audioUtils';
 import { getTextTranslationForLive, getHintsForLive } from '../services/geminiService';
 
@@ -27,27 +27,45 @@ const PopupContentRenderer: React.FC<{ content: string; type: 'translation' | 'h
         );
     }
 
+    // For Hints: Parse numbered list and format nicely
     const lines = content.split('\n').filter(line => line.trim().length > 0);
 
     return (
         <div className="space-y-3">
             {lines.map((line, idx) => {
                 const cleanLine = line.replace(/^[\d-]+\.\s*|^\*\s*/, '');
-                const parts = cleanLine.split('(');
-                const mainPart = parts[0];
-                const subPart = parts.length > 1 ? '(' + parts.slice(1).join('(') : '';
+                // Attempt to split by last parenthesis for translation
+                // Regex looks for the last occurrence of (...)
+                const match = cleanLine.match(/^(.*)\((.*)\)\s*$/);
+                
+                let mainPart = cleanLine;
+                let subPart = "";
+
+                if (match) {
+                    mainPart = match[1].trim();
+                    subPart = match[2].trim();
+                } else {
+                     // Fallback split if regex fails (simple split by first paren)
+                    const parts = cleanLine.split('(');
+                    mainPart = parts[0].trim();
+                    subPart = parts.length > 1 ? parts.slice(1).join('(').replace(')', '').trim() : '';
+                }
 
                 return (
-                    <div key={idx} className="flex items-start gap-3 bg-slate-800/50 p-3 rounded-xl border border-white/5 hover:bg-slate-800 transition-colors">
-                        <div className="mt-1 min-w-[20px] h-5 flex items-center justify-center bg-amber-500/20 text-amber-400 text-xs font-bold rounded-full">
-                            {idx + 1}
-                        </div>
-                        <div className="text-sm leading-relaxed">
-                            <span className="block text-amber-100 font-semibold mb-0.5">{mainPart.trim()}</span>
-                            {subPart && (
-                                <span className="block text-slate-400 text-xs italic">{subPart.trim()}</span>
-                            )}
-                        </div>
+                    <div key={idx} className="flex flex-col gap-1 bg-slate-800/80 p-3 rounded-xl border border-amber-500/20 hover:bg-slate-800 transition-colors shadow-sm">
+                         <div className="flex items-start gap-2">
+                             <span className="mt-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-full shrink-0">
+                                {idx + 1}
+                             </span>
+                             <span className="text-amber-50 font-semibold text-sm leading-snug">
+                                {mainPart}
+                             </span>
+                         </div>
+                         {subPart && (
+                             <div className="pl-7 text-xs text-slate-400 font-medium italic">
+                                 {subPart}
+                             </div>
+                         )}
                     </div>
                 );
             })}
@@ -126,7 +144,7 @@ const DraggableWindow: React.FC<DraggableWindowProps> = ({ title, icon, content,
             </div>
         </div>
         
-        <div className="p-5 max-h-[300px] overflow-y-auto custom-scrollbar">
+        <div className="p-4 max-h-[300px] overflow-y-auto custom-scrollbar">
             <PopupContentRenderer content={content} type={type} />
         </div>
     </div>
@@ -373,16 +391,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
 
       const config = {
         responseModalities: [Modality.AUDIO],
-        inputAudioTranscription: { model: "gemini-2.5-flash-native-audio-preview-09-2025" }, // Enable user transcription
+        inputAudioTranscription: {}, // Transcription enabled with default model
         outputAudioTranscription: {},
         speechConfig: {
           voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
         },
-        systemInstruction: { parts: [{ text: correctionPrompt }] },
+        systemInstruction: correctionPrompt, // Pass as string to avoid structure issues
       };
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: config as any,
         callbacks: {
           onopen: () => {
@@ -562,7 +580,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
                     {showTranslation ? <Eye size={14} /> : <Globe size={14} />} <span className="hidden sm:inline">Türkçe</span>
                  </button>
                  <button onClick={() => setShowHints(!showHints)} disabled={!hints} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${showHints ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'} disabled:opacity-50`}>
-                    <Sparkles size={14} /> <span className="hidden sm:inline">İpucu</span>
+                    <MessageCircle size={14} /> <span className="hidden sm:inline">Öneri</span>
                  </button>
                  <div className="h-6 w-px bg-slate-800 mx-1 hidden md:block"></div>
                  <div className="hidden md:flex flex-col items-end">
@@ -600,7 +618,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({ settings, initialConte
                 )}
              </div>
              {showTranslation && translation && (<DraggableWindow title="Çeviri" icon={<Globe size={14}/>} content={translation} onClose={() => setShowTranslation(false)} initialPosition={{ x: 100, y: 150 }} colorClass="emerald" type="translation" />)}
-             {showHints && hints && (<DraggableWindow title="İpuçları" icon={<Sparkles size={14}/>} content={hints} onClose={() => setShowHints(false)} initialPosition={{ x: (typeof window !== 'undefined' && window.innerWidth > 500) ? window.innerWidth - 420 : 20, y: 150 }} colorClass="amber" type="hints" />)}
+             {showHints && hints && (<DraggableWindow title="Cevap Önerileri" icon={<MessageCircle size={14}/>} content={hints} onClose={() => setShowHints(false)} initialPosition={{ x: (typeof window !== 'undefined' && window.innerWidth > 500) ? window.innerWidth - 420 : 20, y: 150 }} colorClass="amber" type="hints" />)}
       </div>
 
       <div className="relative z-20 p-8 pb-10 flex flex-col items-center justify-end bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent">

@@ -10,8 +10,9 @@ import { DashboardModal } from './components/DashboardModal';
 import { PracticeModal } from './components/PracticeModal';
 import { GameArenaModal } from './components/GameArenaModal';
 import { StoryModeModal } from './components/StoryModeModal';
+import { PatternPracticeModal } from './components/PatternPracticeModal'; // IMPORT
 import { sendMessageToGemini, generateSpeechFromText } from './services/geminiService';
-import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2, Book } from 'lucide-react';
+import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2, Book, Sparkles } from 'lucide-react';
 
 const App: React.FC = () => {
   // State initialization with LocalStorage
@@ -57,6 +58,7 @@ const App: React.FC = () => {
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
   const [isGameArenaOpen, setIsGameArenaOpen] = useState(false);
   const [isStoryModeOpen, setIsStoryModeOpen] = useState(false);
+  const [isPatternPracticeOpen, setIsPatternPracticeOpen] = useState(false); // NEW STATE
   
   // Resume Context for Live Session
   const [liveSessionContext, setLiveSessionContext] = useState<string | undefined>(undefined);
@@ -195,13 +197,7 @@ const App: React.FC = () => {
           if (!currentStats.badges.includes(badge.id)) {
               if (currentStats[badge.conditionType] >= badge.threshold) {
                   newBadges.push(badge.id);
-                  // Notify user
-                  setMessages(prev => [...prev, {
-                      id: Date.now().toString(),
-                      role: 'system',
-                      text: `🎉 **TEBRİKLER! YENİ ROZET KAZANDINIZ:** ${badge.name} ${badge.icon === 'Flame' ? '🔥' : '🏆'}\n\n${badge.description}`,
-                      timestamp: Date.now()
-                  }]);
+                  // Notification removed to reduce noise
               }
           }
       });
@@ -221,12 +217,7 @@ const App: React.FC = () => {
                   if (completed && !q.isCompleted) {
                       // Quest completed just now
                       newStats.currentXP += q.xpReward;
-                       setMessages(prevMessages => [...prevMessages, {
-                          id: Date.now().toString(),
-                          role: 'system',
-                          text: `✅ **GÜNLÜK GÖREV TAMAMLANDI:** ${q.description} (+${q.xpReward} XP)`,
-                          timestamp: Date.now()
-                      }]);
+                      // Notification removed - Silent update
                   }
                   return { ...q, progress: newProgress, isCompleted: completed };
               }
@@ -238,12 +229,7 @@ const App: React.FC = () => {
           const newLevel = Math.floor(newStats.currentXP / 1000) + 1;
           if (newLevel > newStats.level) {
                newStats.level = newLevel;
-               setMessages(prevMessages => [...prevMessages, {
-                  id: Date.now().toString(),
-                  role: 'system',
-                  text: `🚀 **SEVİYE ATLADIN!** Artık Seviye ${newLevel} oldun!`,
-                  timestamp: Date.now()
-              }]);
+               // Notification removed - Silent update
           }
 
           // 4. Check Badges
@@ -466,6 +452,15 @@ const App: React.FC = () => {
                     </button>
 
                     <button 
+                        onClick={() => setIsPatternPracticeOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-full shadow-lg shadow-pink-500/30 transition-all font-medium text-sm border border-pink-400/20 hover:scale-105 active:scale-95 group"
+                        title="Cümle Kalıpları"
+                    >
+                        <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                        <span className="hidden md:inline">Kalıplar</span>
+                    </button>
+
+                    <button 
                         onClick={() => setIsGameArenaOpen(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30 transition-all font-medium text-sm border border-indigo-400/20 hover:scale-105 active:scale-95 group"
                         title="Oyun Arenası"
@@ -631,6 +626,17 @@ const App: React.FC = () => {
              onClose={() => setIsStoryModeOpen(false)}
              settings={settings}
              onComplete={handleStoryComplete}
+          />
+      )}
+
+      {/* PATTERN PRACTICE MODAL (NEW) */}
+      {isPatternPracticeOpen && (
+          <PatternPracticeModal 
+             isOpen={isPatternPracticeOpen}
+             onClose={() => setIsPatternPracticeOpen(false)}
+             settings={settings}
+             audioContext={audioContext}
+             onSaveVocabulary={handleSaveVocabulary}
           />
       )}
     </div>
