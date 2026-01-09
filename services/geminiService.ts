@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Content, Type } from "@google/genai";
-import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion, StoryGenre, StoryState, DailyPattern } from "../types";
+import { AppSettings, LessonMode, PracticeResult, GameMode, GameQuestion, StoryGenre, StoryState, DailyPattern, PlacementQuestion, NewsArticle, WritingFeedback, IdiomCard, ShadowingResult } from "../types";
 import { SYSTEM_DEFINITION } from "../constants";
 import { decodeBase64, decodeAudioData } from "../utils/audioUtils";
 
@@ -809,4 +809,132 @@ export const getHintsForLive = async (
         console.error("Hints generation failed", e);
         return "Bağlantı hatası nedeniyle öneri alınamadı.";
     }
+};
+
+// --- STUDY HUB SERVICES (NEW) ---
+
+export const generatePlacementTest = async (settings: AppSettings): Promise<PlacementQuestion[]> => {
+    return withRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: settings.textModel || "gemini-3-flash-preview",
+            contents: `
+            Generate 10 multiple-choice English proficiency questions ranging from A1 to C2.
+            The questions should test grammar, vocabulary, and reading comprehension.
+            
+            Return JSON Array:
+            [
+              {
+                "id": 1,
+                "question": "She _____ to the store yesterday.",
+                "options": ["go", "went", "gone", "going"],
+                "correctIndex": 1,
+                "level": "A2"
+              }
+            ]
+            `,
+            config: { responseMimeType: "application/json" }
+        });
+        const jsonStr = response.text?.replace(/```json|```/g, '').trim() || "[]";
+        return JSON.parse(jsonStr);
+    }, settings);
+};
+
+export const evaluateWriting = async (text: string, settings: AppSettings): Promise<WritingFeedback> => {
+    return withRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: settings.textModel || "gemini-3-flash-preview",
+            contents: `
+            Act as an English writing tutor. Evaluate the following text for grammar, vocabulary (CEFR ${settings.proficiencyLevel}), and flow.
+            
+            Input Text: "${text}"
+            
+            Return JSON:
+            {
+              "correctedText": "The fully corrected version of the text.",
+              "score": 85,
+              "critique": "A summary of feedback in ${settings.nativeLanguage}.",
+              "mistakes": [
+                 { "original": "wrong part", "correction": "right part", "explanation": "Why it was wrong (in ${settings.nativeLanguage})" }
+              ]
+            }
+            `,
+            config: { responseMimeType: "application/json" }
+        });
+        const jsonStr = response.text?.replace(/```json|```/g, '').trim() || "{}";
+        return JSON.parse(jsonStr);
+    }, settings);
+};
+
+export const generateNewsArticles = async (settings: AppSettings): Promise<NewsArticle[]> => {
+    return withRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: settings.textModel || "gemini-3-flash-preview",
+            contents: `
+            Generate 3 short, interesting news summaries (approx 100 words each) suitable for ${settings.proficiencyLevel} English learners.
+            Topics: Tech, Science, Culture.
+            
+            Return JSON Array:
+            [
+              {
+                "id": "news1",
+                "title": "Headline",
+                "content": "Story text...",
+                "translation": "Turkish translation of story...",
+                "keywords": [{ "word": "difficult_word", "meaning": "Turkish meaning" }],
+                "level": "${settings.proficiencyLevel}"
+              }
+            ]
+            `,
+            config: { responseMimeType: "application/json" }
+        });
+        const jsonStr = response.text?.replace(/```json|```/g, '').trim() || "[]";
+        return JSON.parse(jsonStr);
+    }, settings);
+};
+
+export const generateIdiom = async (settings: AppSettings): Promise<IdiomCard> => {
+    return withRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: settings.textModel || "gemini-3-flash-preview",
+            contents: `
+            Pick a popular English idiom or slang appropriate for ${settings.proficiencyLevel}.
+            
+            Return JSON:
+            {
+              "idiom": "Break a leg",
+              "meaning": "Good luck (Turkish meaning)",
+              "origin": "Brief origin story in English",
+              "example": "Example sentence using the idiom."
+            }
+            `,
+            config: { responseMimeType: "application/json" }
+        });
+        const jsonStr = response.text?.replace(/```json|```/g, '').trim() || "{}";
+        return JSON.parse(jsonStr);
+    }, settings);
+};
+
+export const evaluateShadowing = async (originalText: string, userTranscript: string, settings: AppSettings): Promise<ShadowingResult> => {
+    return withRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: settings.textModel || "gemini-3-flash-preview",
+            contents: `
+            Compare the User Transcript to the Original Text for a shadowing exercise.
+            Original: "${originalText}"
+            User Transcript: "${userTranscript}"
+            
+            Ignore punctuation case. Focus on missed words or wrong words.
+            
+            Return JSON:
+            {
+              "score": 80,
+              "feedback": "Feedback on accuracy in ${settings.nativeLanguage}.",
+              "transcript": "${userTranscript}"
+            }
+            `,
+            config: { responseMimeType: "application/json" }
+        });
+        const jsonStr = response.text?.replace(/```json|```/g, '').trim() || "{}";
+        return JSON.parse(jsonStr);
+    }, settings);
 };

@@ -10,9 +10,10 @@ import { DashboardModal } from './components/DashboardModal';
 import { PracticeModal } from './components/PracticeModal';
 import { GameArenaModal } from './components/GameArenaModal';
 import { StoryModeModal } from './components/StoryModeModal';
-import { PatternPracticeModal } from './components/PatternPracticeModal'; // IMPORT
+import { PatternPracticeModal } from './components/PatternPracticeModal';
+import { StudyHubModal } from './components/StudyHubModal'; // IMPORT
 import { sendMessageToGemini, generateSpeechFromText } from './services/geminiService';
-import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2, Book, Sparkles } from 'lucide-react';
+import { GraduationCap, Activity, Key, Headset, Loader2, BookOpen, Github, Linkedin, Mail, Gamepad2, Book, Sparkles, School } from 'lucide-react';
 
 const App: React.FC = () => {
   // State initialization with LocalStorage
@@ -58,7 +59,8 @@ const App: React.FC = () => {
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
   const [isGameArenaOpen, setIsGameArenaOpen] = useState(false);
   const [isStoryModeOpen, setIsStoryModeOpen] = useState(false);
-  const [isPatternPracticeOpen, setIsPatternPracticeOpen] = useState(false); // NEW STATE
+  const [isPatternPracticeOpen, setIsPatternPracticeOpen] = useState(false); 
+  const [isStudyHubOpen, setIsStudyHubOpen] = useState(false); // NEW STATE
   
   // Resume Context for Live Session
   const [liveSessionContext, setLiveSessionContext] = useState<string | undefined>(undefined);
@@ -452,6 +454,15 @@ const App: React.FC = () => {
                     </button>
 
                     <button 
+                        onClick={() => setIsStudyHubOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-full shadow-lg shadow-purple-500/30 transition-all font-medium text-sm border border-purple-400/20 hover:scale-105 active:scale-95 group"
+                        title="Öğrenme Merkezi"
+                    >
+                        <School className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                        <span className="hidden md:inline">Study Hub</span>
+                    </button>
+
+                    <button 
                         onClick={() => setIsPatternPracticeOpen(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-full shadow-lg shadow-pink-500/30 transition-all font-medium text-sm border border-pink-400/20 hover:scale-105 active:scale-95 group"
                         title="Cümle Kalıpları"
@@ -629,7 +640,7 @@ const App: React.FC = () => {
           />
       )}
 
-      {/* PATTERN PRACTICE MODAL (NEW) */}
+      {/* PATTERN PRACTICE MODAL */}
       {isPatternPracticeOpen && (
           <PatternPracticeModal 
              isOpen={isPatternPracticeOpen}
@@ -637,6 +648,17 @@ const App: React.FC = () => {
              settings={settings}
              audioContext={audioContext}
              onSaveVocabulary={handleSaveVocabulary}
+          />
+      )}
+
+      {/* STUDY HUB MODAL (NEW) */}
+      {isStudyHubOpen && (
+          <StudyHubModal 
+             isOpen={isStudyHubOpen}
+             onClose={() => setIsStudyHubOpen(false)}
+             settings={settings}
+             audioContext={audioContext}
+             onUpdateLevel={(level) => setSettings(prev => ({...prev, proficiencyLevel: level as any}))}
           />
       )}
     </div>

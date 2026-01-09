@@ -100,7 +100,7 @@ export enum GameMode {
     Speaking = 'speaking' // NEW: Konuşma (Telaffuz)
 }
 
-// --- STORY TYPES (NEW) ---
+// --- STORY TYPES ---
 export enum StoryGenre {
     Mystery = 'Mystery & Detective',
     SciFi = 'Science Fiction',
@@ -119,6 +119,45 @@ export interface StoryState {
     choices: string[]; // Options for the user
     imagePrompt?: string; // For generating scene images later
     isEnding: boolean; // Is this the end of the story?
+}
+
+// --- STUDY HUB TYPES (NEW) ---
+
+export interface PlacementQuestion {
+    id: number;
+    question: string;
+    options: string[];
+    correctIndex: number;
+    level: string; // A1, A2, etc.
+}
+
+export interface NewsArticle {
+    id: string;
+    title: string;
+    content: string; // Short summary
+    translation: string;
+    keywords: { word: string; meaning: string }[];
+    level: string;
+}
+
+export interface WritingFeedback {
+    correctedText: string;
+    score: number; // 0-100
+    critique: string; // General feedback
+    mistakes: { original: string; correction: string; explanation: string }[];
+}
+
+export interface IdiomCard {
+    idiom: string;
+    meaning: string;
+    origin: string;
+    example: string;
+}
+
+export interface ShadowingResult {
+    score: number;
+    feedback: string;
+    transcript: string;
 }
 
 export interface GameQuestion {
@@ -165,7 +204,7 @@ export interface PracticeResult {
     score: number; // 0-100
 }
 
-// --- SESSION HISTORY (NEW) ---
+// --- SESSION HISTORY ---
 export interface SessionRecord {
     id: string;
     date: number; // Timestamp
@@ -175,7 +214,7 @@ export interface SessionRecord {
     language: TargetLanguage;
 }
 
-// --- SENTENCE PATTERNS (NEW) ---
+// --- SENTENCE PATTERNS ---
 export interface DailyPattern {
     id: string;
     pattern: string; // e.g. "I'm thinking of + V-ing"
